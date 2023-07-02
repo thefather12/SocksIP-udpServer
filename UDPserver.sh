@@ -638,7 +638,7 @@ make_service(){
 
 cat <<EOF > /etc/systemd/system/UDPserver.service
 [Unit]
-Description=UDPserver Service by @Rufu99
+Description=UDPserver Service by @THEFATHER12
 After=network.target
 
 [Service]

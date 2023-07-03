@@ -863,9 +863,9 @@ quit_exclude(){
 }
 
 menu_udp(){
-	title "${a1:-SCRIPT DE CONFIGRACION UDPserver} BY @Rufu99"
-	print_center -ama 'UDPserver Binary by team newtoolsworks'
-	print_center -ama 'UDPclient Android SocksIP'
+	title "${a1:-SCRIPT DE CONFIGRACION UDPserver} BY @THEFATHER12"
+	print_center -ama 'UDPserver Binario by team newtoolsworks'
+	print_center -ama 'UDPcliente Para Android SocksIP'
 	msg -bar
   
 	if [[ $(type -p udpServer) ]]; then

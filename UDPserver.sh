@@ -1,938 +1,518 @@
-#!/bin/bash
-
-udp_file='/etc/UDPserver'
-lang_dir="$udp_file/lang"
-lang="$lang_dir/lang"
-
-idioam_lang(){
-  source <(curl -sSl 'https://raw.githubusercontent.com/thefather12/SocksIP-udpServer/main/lang/lang')
-  title -ama 'IDIOMA/LANGUAGE'
-  echo " $(msg -verd "[0]") $(msg -verm2 '>') $(msg -azu "Español Default")"
-  n=0
-  for (( i = 0; i < ${#list_lang[@]}; i++ )); do
-    let n++
-    case ${list_lang[$i]} in
-      en_US)l='English';;
-    esac
-    echo " $(msg -verd "[$n]") $(msg -verm2 '>') $(msg -azu "$l")"
-  done
-  msg -bar
-  lg=$(selection_fun $n)
-  [[ $lg = 0 ]] && echo '' > $lang && return 1
-  let lg-- 
-  [[ ! -d $lang_dir/${list_lang[$lg]} ]] && mkdir -p $lang_dir/${list_lang[$lg]} || rm -rf $lang_dir/${list_lang[$lg]}/*
-  for arch in $listarq; do
-    if ! wget -O $lang_dir/${list_lang[$lg]}/$arch "https://raw.githubusercontent.com/thefather12/SocksIP-udpServer/main/lang/${list_lang[$lg]}/$arch" &>/dev/null ;then
-      rm -rf $lang_dir/${list_lang[$lg]}
-      echo '' > $lang ; exit
-    fi
-  done
-  echo "${list_lang[$lg]}" > $lang
-}
-
-repo_install(){
-  link="https://raw.githubusercontent.com/rudi9999/ADMRufu/main/Repositorios/$VERSION_ID.list"
-  case $VERSION_ID in
-    8*|9*|10*|11*|16.04*|18.04*|20.04*|20.10*|21.04*|21.10*|22.04*) [[ ! -e /etc/apt/sources.list.back ]] && cp /etc/apt/sources.list /etc/apt/sources.list.back
-                                                                    wget -O /etc/apt/sources.list ${link} &>/dev/null;;
-  esac
-}
-
-time_reboot(){
-  print_center -ama "${a92:-REINICIANDO VPS EN} $1 ${a93:-SEGUNDOS}"
-  REBOOT_TIMEOUT="$1"
-  
-  while [ $REBOOT_TIMEOUT -gt 0 ]; do
-     print_center -ne "-$REBOOT_TIMEOUT-\r"
-     sleep 1
-     : $((REBOOT_TIMEOUT--))
-  done
-  reboot
-}
-
-check_sistem(){
-  fail(){
-    clear
-    echo -e "\e[1m\e[31m=====================================================\e[0m"
-    echo -e "\e[1m\e[33m${a94:-este script no es compatible con tu systema operativo}\e[0m"
-    echo -e "\e[1m\e[33m              ${a95:-Usa Ubuntu 20 o superior}\e[0m"
-    echo -e "\e[1m\e[31m=====================================================\e[0m"
-    exit
-  }
-  VER=$(echo $VERSION_ID|awk -F '.' '{print $1}')
-  if [[ ! $NAME = 'Ubuntu' ]]; then
-    fail
-  elif [[ $VER -lt 20 ]]; then
-    rm -rf $udp_file
-      fail
-  fi
-}
-
-if [[ ! -e $udp_file/UDPserver.sh ]]; then
-  mkdir $udp_file
-  chmod -R +x $udp_file
-  source <(curl -sSL 'https://raw.githubusercontent.com/rudi9999/Herramientas/main/module/module')
-  idioam_lang
-  [[ -e $lang ]] && newlang=$(cat $lang) && [[ ! $newlang = '' ]] && source $udp_file/lang/$newlang/UDPserver
-  source /etc/os-release
-  check_sistem
-	wget -O $udp_file/module 'https://raw.githubusercontent.com/rudi9999/Herramientas/main/module/module' &>/dev/null
-	chmod +x $udp_file/module
-	#source $udp_file/module
-	wget -O $udp_file/limitador.sh "https://raw.githubusercontent.com/thefather12/SocksIP-udpServer/main/limitador.sh" &>/dev/null
-	chmod +x $udp_file/limitador.sh
-	echo '/etc/UDPserver/UDPserver.sh' > /usr/bin/udp
-	chmod +x /usr/bin/udp
-	repo_install
-	apt update -y && apt upgrade -y
-	ufw disable
-	apt remove netfilter-persistent -y
-	cp $(pwd)/$0 $udp_file/UDPserver.sh
-	chmod +x $udp_file/UDPserver.sh
-	rm $(pwd)/$0 &> /dev/null
-	title "${a102:-INSTALACION COMPLETA}"
-	print_center -ama "${a103:-Use el comando\nudp\npara ejecutar el menu}"
-	msg -bar
-	time_reboot 10
-fi
-
-[[ -e $lang ]] && newlang=$(cat $lang) && [[ ! $newlang = '' ]] && source $udp_file/lang/$newlang/UDPserver
-
-source $udp_file/module
-
-ip_publica=$(grep -m 1 -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' <<< "$(wget -T 10 -t 1 -4qO- "http://ip1.dynupdate.no-ip.com/" || curl -m 10 -4Ls "http://ip1.dynupdate.no-ip.com/")")
-
-#======= CONFIGURACION CUENTAS SSH =======
-
-data_user(){
-	cat_users=$(cat "/etc/passwd"|grep 'home'|grep 'false'|grep -v 'syslog'|grep -v '::/'|grep -v 'hwid\|token')
-	[[ -z "$(echo "${cat_users}"|head -1)" ]] && print_center -verm2 "${a96:-NO HAY USUARIOS SSH REGISTRADOS}" && return 1
-  dat_us=$(printf '%-13s%-14s%-10s%-4s%-6s%s' "${a48:-Usuario}" "${a49:-Contraseña}" "${a97:-Fecha}" "${a98:-Dia}" 'Limit' 'Statu')
-	msg -azu "  $dat_us"
-	msg -bar
-
-	i=1
-
-  while read line; do
-    u=$(echo "$line"|awk -F ':' '{print $1}')
-
-    fecha=$(chage -l "$u"|sed -n '4p'|awk -F ': ' '{print $2}')
-
-    mes_dia=$(echo $fecha|awk -F ',' '{print $1}'|sed 's/ //g')
-    ano=$(echo $fecha|awk -F ', ' '{printf $2}'|cut -c 3-)
-    us=$(printf '%-12s' "$u")
-
-    pass=$(echo "$line"|awk -F ':' '{print $5}'|cut -d ',' -f2)
-    [[ "${#pass}" -gt '12' ]] && pass="${a99:-Desconosida}"
-    pass="$(printf '%-12s' "$pass")"
-
-    unset stat
-    if [[ $(passwd --status $u|cut -d ' ' -f2) = "P" ]]; then
-      stat="$(msg -verd "ULK")"
-    else
-      stat="$(msg -verm2 "LOK")"
-    fi
-
-    Limit=$(echo "$line"|awk -F ':' '{print $5}'|cut -d ',' -f1)
-    [[ "${#Limit}" = "1" ]] && Limit=$(printf '%2s%-4s' "$Limit") || Limit=$(printf '%-6s' "$Limit")
-
-    echo -ne "$(msg -verd "$i")$(msg -verm2 "-")$(msg -azu "${us}") $(msg -azu "${pass}")"
-    if [[ $(echo $fecha|awk '{print $2}') = "" ]]; then
-      exp="$(printf '%8s%-2s' '[X]')"
-      exp+="$(printf '%-6s' '[X]')"
-      echo " $(msg -verm2 "$fecha")$(msg -verd "$exp")$(echo -e "$stat")" 
-    else
-      if [[ $(date +%s) -gt $(date '+%s' -d "${fecha}") ]]; then
-        exp="$(printf '%-5s' "Exp")"
-        echo " $(msg -verm2 "$mes_dia/$ano")  $(msg -verm2 "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
-      else
-        EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
-        [[ "${#EXPTIME}" = "1" ]] && exp="$(printf '%2s%-3s' "$EXPTIME")" || exp="$(printf '%-5s' "$EXPTIME")"
-        echo " $(msg -verm2 "$mes_dia/$ano")  $(msg -verd "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
-      fi
-    fi
-    let i++
-  done <<< "$cat_users"
-}
-
-mostrar_usuarios(){
-  for u in `cat /etc/passwd|grep 'home'|grep 'false'|grep -v 'syslog'|grep -v 'hwid'|grep -v 'token'|grep -v '::/'|awk -F ':' '{print $1}'`; do
-    echo "$u"
-  done
-}
-#======= limitadr multi-login =====
-
-limiter(){
-
-	ltr(){
-		clear
-		msg -bar
-		for i in `atq|awk '{print $1}'`; do
-			if [[ ! $(at -c $i|grep 'limitador.sh') = "" ]]; then
-				atrm $i
-				sed -i '/limitador.sh/d' /var/spool/cron/crontabs/root
-				print_center -verd "${a68:-limitador detenido}"
-				enter
-				return
-			fi
-		done
-    print_center -ama "${a69:-CONFIGRAR LIMITADOR}"
-    msg -bar
-    print_center -ama "${a70:-Bloquea usuarios cuando exeden}"
-    print_center -ama "${a71:-el numero maximo conecciones}"
-    msg -bar
-    unset opcion
-    while [[ -z $opcion ]]; do
-      msg -nama " ${a72:-Ejecutar limitdor cada}: "
-      read opcion
-      if [[ ! $opcion =~ $numero ]]; then
-        del 1
-        print_center -verm2 " ${a73:-Solo se admiten nuemros}"
-        sleep 2
-        del 1
-        unset opcion && continue
-      elif [[ $opcion -le 0 ]]; then
-        del 1
-        print_center -verm2 "${a74:-tiempo minimo 1 minuto}"
-        sleep 2
-        del 1
-        unset opcion && continue
-      fi
-      del 1
-      echo -e "$(msg -nama " ${a75:-Ejecutar limitdor cada}:") $(msg -verd "$opcion ${a76:-minutos}")"
-      echo "$opcion" > ${udp_file}/limit
-    done
-
-    msg -bar
-    print_center -ama "${a77:-Los usuarios bloqueados por el limitador\nseran desbloqueado automaticamente\n(ingresa 0 para desbloqueo manual)}"
-    msg -bar
-
-    unset opcion
-    while [[ -z $opcion ]]; do
-      msg -nama " ${a78:-Desbloquear usuarios cada}: "
-      read opcion
-      if [[ ! $opcion =~ $numero ]]; then
-        tput cuu1 && tput dl1
-        print_center -verm2 " ${a73:-Solo se admiten nuemros}"
-        sleep 2
-        tput cuu1 && tput dl1
-        unset opcion && continue
-      fi
-      tput cuu1 && tput dl1
-      [[ $opcion -le 0 ]] && echo -e "$(msg -nama " ${a79:-Desbloqueo}:") $(msg -verd "${a80:-manual}")" || echo -e "$(msg -nama " ${a78:-Desbloquear usuarios cada}:") $(msg -verd "$opcion ${a76:-minutos}")"
-      echo "$opcion" > ${udp_file}/unlimit
-    done
-		nohup ${udp_file}/limitador.sh &>/dev/null &
-    msg -bar
-		print_center -verd "${a81:-limitador en ejecucion}"
-		enter	
-	}
-
-	l_exp(){
-		clear
-    	msg -bar
-    	l_cron=$(cat /var/spool/cron/crontabs/root|grep -w 'limitador.sh'|grep -w 'ssh')
-    	if [[ -z "$l_cron" ]]; then
-      		echo '0 1 * * * /etc/UDPserver/limitador.sh --ssh' >> /var/spool/cron/crontabs/root
-      		print_center -verd "${a82:-limitador de expirados programado\nse ejecutara todos los dias a la 1hs am\nsegun la hora programada en el servidor}"
-    	else
-      		sed -i '/limitador.sh --ssh/d' /var/spool/cron/crontabs/root
-      		print_center -verm2 "${a83:-limitador de expirados detenido}"   
-    	fi
-      enter
-      return
-	}
-
-	log(){
-		clear
-		msg -bar
-		print_center -ama "${a84:-REGISTRO DEL LIMITADOR}"
-		msg -bar
-		[[ ! -e ${udp_file}/limit.log ]] && touch ${udp_file}/limit.log
-		if [[ -z $(cat ${udp_file}/limit.log) ]]; then
-			print_center -ama "${a85:-no ahy registro de limitador}"
-			msg -bar
-			sleep 2
-			return
-		fi
-		msg -teal "$(cat ${udp_file}/limit.log)"
-		msg -bar
-		print_center -ama "►► ${a86:-Presione enter para continuar o} ◄◄"
-		print_center -ama "►► ${a87:-0 para limpiar registro} ◄◄"
-		read opcion
-		[[ $opcion = "0" ]] && echo "" > ${udp_file}/limit.log
-	}
-
-	[[ $(cat /var/spool/cron/crontabs/root|grep -w 'limitador.sh'|grep -w 'ssh') ]] && lim_e=$(msg -verd "[ON]") || lim_e=$(msg -verm2 "[OFF]")
-
-	clear
-	msg -bar
-	print_center -ama "${a11:-LIMITADOR DE CUENTAS}"
-	msg -bar
-	menu_func "${a64:-LIMITADOR MULTI-LOGIN}" "${a65:-LIMITADOR EXPIRADOS} $lim_e" "${a66:-LOG DEL LIMITADOR}"
-	back
-	msg -ne " ${a67:-opcion}: "
-	read opcion
-	case $opcion in
-		1)ltr;;
-		2)l_exp;;
-		3)log;;
-		0)return;;
-	esac
-}
-
-# ======== detalles de clientes ====
-
-detail_user(){
-	clear
-	usuarios_ativos=('' $(mostrar_usuarios))
-	if [[ -z ${usuarios_ativos[@]} ]]; then
-		msg -bar
-		print_center -verm2 "${a62:-Ningun usuario registrado}"
-		msg -bar
-		sleep 3
-		return
-	else
-		msg -bar
-		print_center -ama "${a63:-DETALLES DEL LOS USUARIOS}"
-		msg -bar
-	fi
-	data_user
-	msg -bar
-	enter
-}
-
-#======== bloquear clientes ======
-
-block_user(){
-  clear
-  usuarios_ativos=('' $(mostrar_usuarios))
-  msg -bar
-  print_center -ama "${a9:-BLOQUEAR/DESBLOQUEAR USUARIOS}"
-  msg -bar
-  data_user
-  back
-
-  print_center -ama "${a52:-Escriba o Seleccione un Usuario}"
-  msg -bar
-  unset selection
-  while [[ ${selection} = "" ]]; do
-    echo -ne "\033[1;37m ${a59:-Seleccione}: " && read selection
-    del 1
-  done
-  [[ ${selection} = "0" ]] && return
-  if [[ ! $(echo "${selection}" | egrep '[^0-9]') ]]; then
-    usuario_del="${usuarios_ativos[$selection]}"
-  else
-    usuario_del="$selection"
-  fi
-  [[ -z $usuario_del ]] && {
-    msg -verm "${a54:-Error, Usuario Invalido}"
-    msg -bar
-    return 1
-  }
-  [[ ! $(echo ${usuarios_ativos[@]}|grep -w "$usuario_del") ]] && {
-    msg -verm "${a54:-Error, Usuario Invalido}"
-    msg -bar
-    return 1
-  }
-
-  msg -nama "   ${a48:-Usuario}: $usuario_del >>>> "
-
-  if [[ $(passwd --status $usuario_del|cut -d ' ' -f2) = "P" ]]; then
-    pkill -u $usuario_del &>/dev/null
-    droplim=`droppids|grep -w "$usuario_del"|awk '{print $2}'` 
-    kill -9 $droplim &>/dev/null
-    usermod -L $usuario_del &>/dev/null
-    sleep 2
-    msg -verm2 "${a60:-Bloqueado}"
-  else
-  	usermod -U $usuario_del
-  	sleep 2
-  	msg -verd "${a61:-Desbloqueado}"
-  fi
-  msg -bar
-  sleep 3
-}
-
-#========renovar cliente =========
-
-renew_user_fun(){
-  #nome dias
-  datexp=$(date "+%F" -d " + $2 days") && valid=$(date '+%C%y-%m-%d' -d " + $2 days")
-  if chage -E $valid $1 ; then
-  	print_center -ama "${a100:-Usuario Renovado Con Exito}"
-  else
-  	print_center -verm "${a101:-Error, Usuario no Renovado}"
-  fi
-}
-
-renew_user(){
-  clear
-  usuarios_ativos=('' $(mostrar_usuarios))
-  msg -bar
-  print_center -ama "${a8:-RENOVAR USUARIOS}"
-  msg -bar
-  data_user
-  back
-
-  print_center -ama "${a52:-Escriba o Seleccione un Usuario}"
-  msg -bar
-  unset selection
-  while [[ -z ${selection} ]]; do
-    msg -nazu "${a53:-Seleccione Una Opcion}: " && read selection
-    del 1
-  done
-
-  [[ ${selection} = "0" ]] && return
-  if [[ ! $(echo "${selection}" | egrep '[^0-9]') ]]; then
-    useredit="${usuarios_ativos[$selection]}"
-  else
-    useredit="$selection"
-  fi
-
-  [[ -z $useredit ]] && {
-    msg -verm "${a54:-Error, Usuario Invalido}"
-    msg -bar
-    sleep 3
-    return 1
-  }
-
-  [[ ! $(echo ${usuarios_ativos[@]}|grep -w "$useredit") ]] && {
-    msg -verm "${a54:-Error, Usuario Invalido}"
-    msg -bar
-    sleep 3
-    return 1
-  }
-
-  while true; do
-    msg -ne "${a58:-Nuevo Tiempo de Duracion de}: $useredit"
-    read -p ": " diasuser
-    if [[ -z "$diasuser" ]]; then
-      echo -e '\n\n\n'
-      err_fun 7 && continue
-    elif [[ "$diasuser" != +([0-9]) ]]; then
-      echo -e '\n\n\n'
-      err_fun 8 && continue
-    elif [[ "$diasuser" -gt "360" ]]; then
-      echo -e '\n\n\n'
-      err_fun 9 && continue
-    fi
-    break
-  done
-  msg -bar
-  renew_user_fun "${useredit}" "${diasuser}"
-  msg -bar
-  sleep 3
-}
-
-#======== remover cliente =========
-
-droppids(){
-  port_dropbear=`ps aux|grep 'dropbear'|awk NR==1|awk '{print $17;}'`
-  log=/var/log/auth.log
-  loginsukses='Password auth succeeded'
-  pids=`ps ax|grep 'dropbear'|grep " $port_dropbear"|awk -F " " '{print $1}'`
-  for pid in $pids; do
-    pidlogs=`grep $pid $log |grep "$loginsukses" |awk -F" " '{print $3}'`
-    i=0
-    for pidend in $pidlogs; do
-      let i=i+1
-    done
-    if [ $pidend ];then
-       login=`grep $pid $log |grep "$pidend" |grep "$loginsukses"`
-       PID=$pid
-       user=`echo $login |awk -F" " '{print $10}' | sed -r "s/'/ /g"`
-       waktu=`echo $login |awk -F" " '{print $2"-"$1,$3}'`
-       while [ ${#waktu} -lt 13 ]; do
-           waktu=$waktu" "
-       done
-       while [ ${#user} -lt 16 ]; do
-           user=$user" "
-       done
-       while [ ${#PID} -lt 8 ]; do
-           PID=$PID" "
-       done
-       echo "$user $PID $waktu"
-    fi
-	done
-}
-
-rm_user(){
-  pkill -u $1
-  droplim=`droppids|grep -w "$1"|awk '{print $2}'` 
-  kill -9 $droplim &>/dev/null
-  userdel --force "$1" &>/dev/null
-  msj=$?
-}
-
-remove_user(){
-	clear
-	usuarios_ativos=('' $(mostrar_usuarios))
-	msg -bar
-	print_center -ama "${a7:-REMOVER USUARIOS}"
-	msg -bar
-	data_user
-	back
-
-	print_center -ama "${a52:-Escriba o Seleccione un Usuario}"
-	msg -bar
-	unset selection
-	while [[ -z ${selection} ]]; do
-		msg -nazu "${a53:-Seleccione Una Opcion}: " && read selection
-		tput cuu1 && tput dl1
-	done
-	[[ ${selection} = "0" ]] && return
-	if [[ ! $(echo "${selection}" | egrep '[^0-9]') ]]; then
-		usuario_del="${usuarios_ativos[$selection]}"
-	else
-		usuario_del="$selection"
-	fi
-	[[ -z $usuario_del ]] && {
-		msg -verm "${a54:-Error, Usuario Invalido}"
-		msg -bar
-		return 1
-	}
-	[[ ! $(echo ${usuarios_ativos[@]}|grep -w "$usuario_del") ]] && {
-		msg -verm "${a54:-Error, Usuario Invalido}"
-		msg -bar
-		return 1
-	}
-
-	print_center -ama "${a55:-Usuario Seleccionado}: $usuario_del"
-	rm_user "$usuario_del"
-  if [[ $msj = 0 ]] ; then
-    print_center -verd "[${a56:-Removido}]"
-  else
-    print_center -verm "[${a57:-No Removido}]"
-  fi
-  enter
-}
-
-#========crear cliente =============
-add_user(){
-  Fecha=`date +%d-%m-%y-%R`
-  [[ $(cat /etc/passwd |grep $1: |grep -vi [a-z]$1 |grep -v [0-9]$1 > /dev/null) ]] && return 1
-  valid=$(date '+%C%y-%m-%d' -d " +$3 days")
-  osl_v=$(openssl version|awk '{print $2}')
-  osl_v=${osl_v:0:5}
-  if [[ $osl_v = '1.1.1' ]]; then
-    pass=$(openssl passwd -6 $2)
-  else
-    pass=$(openssl passwd -1 $2)
-  fi
-  useradd -M -s /bin/false -e ${valid} -K PASS_MAX_DAYS=$3 -p ${pass} -c $4,$2 $1 &>/dev/null
-  msj=$?
-}
-
-new_user(){
-  clear
-  usuarios_ativos=('' $(mostrar_usuarios))
-  msg -bar
-  print_center -ama "${a6:-CREAR CLIENTE}"
-  msg -bar
-  data_user
-  back
-
-  while true; do
-    msg -ne " ${a41:-Nombre Usuario}: "
-    read nomeuser
-    nomeuser="$(echo $nomeuser|sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/')"
-    nomeuser="$(echo $nomeuser|sed -e 's/[^a-z0-9 -]//ig')"
-    if [[ -z $nomeuser ]]; then
-      err_fun 1 && continue
-    elif [[ "${nomeuser}" = "0" ]]; then
-      return
-    elif [[ "${#nomeuser}" -lt "4" ]]; then
-      err_fun 2 && continue
-    elif [[ "${#nomeuser}" -gt "12" ]]; then
-      err_fun 3 && continue
-    elif [[ "$(echo ${usuarios_ativos[@]}|grep -w "$nomeuser")" ]]; then
-      err_fun 14 && continue
-    fi
-    break
-  done
-
-  while true; do
-    msg -ne " ${a42:-Contraseña De Usuario}"
-    read -p ": " senhauser
-    senhauser="$(echo $senhauser|sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/')"
-    if [[ -z $senhauser ]]; then
-      err_fun 4 && continue
-    elif [[ "${#senhauser}" -lt "4" ]]; then
-      err_fun 5 && continue
-    elif [[ "${#senhauser}" -gt "12" ]]; then
-      err_fun 6 && continue
-    fi
-    break
-  done
-
-  while true; do
-    msg -ne " ${a43:-Tiempo de Duracion}"
-    read -p ": " diasuser
-    if [[ -z "$diasuser" ]]; then
-      err_fun 7 && continue
-    elif [[ "$diasuser" != +([0-9]) ]]; then
-      err_fun 8 && continue
-    elif [[ "$diasuser" -gt "360" ]]; then
-      err_fun 9 && continue
-    fi 
-    break
-  done
-
-  while true; do
-    msg -ne " ${a44:-Limite de Conexion}"
-    read -p ": " limiteuser
-    if [[ -z "$limiteuser" ]]; then
-      err_fun 11 && continue
-    elif [[ "$limiteuser" != +([0-9]) ]]; then
-      err_fun 12 && continue
-    elif [[ "$limiteuser" -gt "999" ]]; then
-      err_fun 13 && continue
-    fi
-    break
-  done
-
-  add_user "${nomeuser}" "${senhauser}" "${diasuser}" "${limiteuser}"
-  clear
-  msg -bar
-  if [[ $msj = 0 ]]; then
-    print_center -verd "${a45:-Usuario Creado con Exito}"
-  else
-    print_center -verm2 "${a46:-Error, Usuario no creado}"
-    enter
-    return 1
-  fi
-  msg -bar
-  msg -ne " ${a47:-IP del Servidor}: " && msg -ama "    $ip_publica"
-  msg -ne " ${a48:-Usuario}: " && msg -ama "            $nomeuser"
-  msg -ne " ${a49:-Contraseña}: " && msg -ama "         $senhauser"
-  msg -ne " ${a50:-Dias de Duracion}: " && msg -ama "   $diasuser"
-  msg -ne " ${a44:-Limite de Conexion}: " && msg -ama " $limiteuser"
-  msg -ne " ${a51:-Fecha de Expiracion}: " && msg -ama "$(date "+%F" -d " + $diasuser days")"
-  enter
-}
-
-#=======================================
-#======= CONFIGURACION UDPSERVER ========
-
-download_udpServer(){
-	msg -nama "        ${a30:-Descargando binario UDPserver} ....."
-	if wget -O /usr/bin/udpServer 'https://bitbucket.org/iopmx/udprequestserver/downloads/udpServer' &>/dev/null ; then
-		chmod +x /usr/bin/udpServer
-		msg -verd 'OK'
-	else
-		msg -verm2 'fail'
-		rm -rf /usr/bin/udpServer*
-	fi
-}
-
-make_service(){
-	ip_nat=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}' | cut -d '/' -f 1 | grep -oE '[0-9]{1,3}(\.[0-9]{1,3}){3}' | sed -n 1p)
-	interfas=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}'|grep "$ip_nat"|awk {'print $NF'})
-	ip_publica=$(grep -m 1 -oE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' <<< "$(wget -T 10 -t 1 -4qO- "http://ip1.dynupdate.no-ip.com/" || curl -m 10 -4Ls "http://ip1.dynupdate.no-ip.com/")")
-
-	#ip_nat=$(fun_ip nat)
-	#interfas=$(ip -4 addr | grep inet | grep -vE '127(\.[0-9]{1,3}){3}'|grep "$ip_nat"|awk {'print $NF'})
-	#ip_publica=$(fun_ip)
-
-cat <<EOF > /etc/systemd/system/UDPserver.service
-[Unit]
-Description=UDPserver Service by @THEFATHER12
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/root
-ExecStart=/usr/bin/udpServer -ip=$ip_publica -net=$interfas$Port -mode=system
-Restart=always
-RestartSec=3s
-
-[Install]
-WantedBy=multi-user.target6
-EOF
-
-	msg -nama "        ${a31:-Ejecutando servicio UDPserver} ....."
-	systemctl start UDPserver &>/dev/null
-	if [[ $(systemctl is-active UDPserver) = 'active' ]]; then
-		msg -verd 'OK'
-		systemctl enable UDPserver &>/dev/null
-	else
-		msg -verm2 'fail'
-	fi
-}
-
-install_UDP(){
-	title "${a16:-INSTALACION UDPserver}"
-  exclude
-	download_udpServer
-	if [[ $(type -p udpServer) ]]; then
-		make_service
-		msg -bar3
-		if [[ $(systemctl is-active UDPserver) = 'active' ]]; then
-			print_center -verd "${a17:-instalacion completa}"
-		else
-			print_center -verm2 "${a18:-falla al ejecutar el servicio}"
-		fi
-	else
-		echo
-		print_center -ama "${a19:-Falla al descargar el binario udpServer}"
-	fi
-	enter	
-}
-
-uninstall_UDP(){
-	title "${a32:-DESINTALADOR UDPserver}"
-	read -rp " $(msg -ama "${a33:-QUIERE DISINSTALAR UDPserver? [S/N]}:") " -e -i S UNINS
-	[[ $UNINS != @(Y|y|S|s) ]] && return
-	systemctl stop UDPserver &>/dev/null
-	systemctl disable UDPserver &>/dev/null
-	rm -rf /etc/systemd/system/UDPserver.service
-	rm -rf /usr/bin/udpServer
-	del 1
-	print_center -ama "${a34:-desinstalacion completa!}"
-	enter
-}
-
-reset(){
-	if [[ $(systemctl is-active UDPserver) = 'active' ]]; then
-		systemctl stop UDPserver &>/dev/null
-		systemctl disable UDPserver &>/dev/null
-		print_center -ama "${a35:-UDPserver detenido!}"
-	else
-		systemctl start UDPserver &>/dev/null
-		if [[ $(systemctl is-active UDPserver) = 'active' ]]; then
-			systemctl enable UDPserver &>/dev/null
-			print_center -verd "${a36:-UDPserver iniciado!}"
-		else
-			print_center -verm2 "${a37:-falla al inciar UDPserver!}"
-		fi	
-	fi
-	enter
-}
-
-#==========================================
-
-QUIC_SCRIPT(){
-	title "${a38:-DESINSTALADOR SCRIPT UDPserver}"
-	read -rp " $(msg -ama "${a39:-QUIERE DISINSTALAR EL SCRIPT UDPserver? [S/N]}:") " -e -i N UNINS
-	[[ $UNINS != @(Y|y|S|s) ]] && return
-	systemctl disable UDPserver &>/dev/null
-	systemctl stop UDPserver &>/dev/null
-	rm /etc/systemd/system/UDPserver.service
-	rm /usr/bin/udpServer
-	rm /usr/bin/udp
-	rm -rf $udp_file
-	title "${a40:-DESINSTALACION COMPLETA}"
-	time_reboot 10
-}
-
-exclude(){
-  title "${a20:-Excluir puertos UDP}"
-  print_center -ama "${a21:-UDPserver cubre el rango total de puertos.}"
-  print_center -ama "${a22:-puedes excluir puertos UDP}"
-  msg -bar3
-  print_center -ama "${a23:-Ejemplos de puertos a excluir}:"
-  print_center -ama "dnstt (slowdns) udp 53 5300"
-  print_center -ama "wireguard udp 51820"
-  print_center -ama "openvpn udp 1194"
-  msg -bar
-  print_center -verd "${a24:-ingresa los puertos separados por espacios}"
-  print_center -verd "${a25:-Ejemplo}: 53 5300 51820 1194"
-  msg -bar3
-  in_opcion_down "${a26:-digita puertos o enter saltar}"
-  del 2
-  tmport=($opcion)
-  for (( i = 0; i < ${#tmport[@]}; i++ )); do
-    num=$((${tmport[$i]}))
-    if [[ $num -gt 0 ]]; then
-      echo "$(msg -ama " ${a27:-Puerto a excluir} >") $(msg -azu "$num") $(msg -verd "OK")"
-      Port+=" $num"
-    else
-      msg -verm2 " ${a28:-No es un puerto} > ${tmport[$i]}?"
-      continue
-    fi
-  done
-
-  if [[ -z $Port ]]; then
-    unset Port
-    print_center -ama "${a29:-no se excluyeron puertos}"
-  else
-    Port=" -exclude=$(echo "$Port"|sed "s/ /,/g"|sed 's/,//')"
-  fi
-  msg -bar3
-}
-
-add_exclude(){
-  title "${a20:-Excluir puertos UDP}"
-  print_center -ama "${a21:-UDPserver cubre el rango total de puertos.}"
-  print_center -ama "${a22:-puedes excluir puertos UDP}"
-  msg -bar3
-  print_center -ama "${a23:-Ejemplos de puertos a excluir}:"
-  print_center -ama "dnstt (slowdns) udp 53 5300"
-  print_center -ama "wireguard udp 51820"
-  print_center -ama "openvpn udp 1194"
-  msg -bar
-  print_center -verd "${a24:-ingresa los puertos separados por espacios}"
-  print_center -verd "${a25:-Ejemplo}: 53 5300 51820 1194"
-  in_opcion_down "${a26:-digita puertos o enter saltar}"
-  del 4
-  tmport=($opcion)
-  unset Port
-  for (( i = 0; i < ${#tmport[@]}; i++ )); do
-    num=$((${tmport[$i]}))
-    if [[ $num -gt 0 ]]; then
-      echo "$(msg -ama " ${a27:-Puerto a excluir} >") $(msg -azu "$num") $(msg -verd "OK")"
-      Port+=" $num"
-    else
-      msg -verm2 " ${a28:-No es un puerto} > ${tmport[$i]}?"
-      continue
-    fi
-  done
-  if [[ $Port = "" ]]; then
-    unset Port
-    print_center -ama "${a29:-no se excluyeron puertos}"
-  else
-    exclude=$(cat /etc/systemd/system/UDPserver.service|grep 'exclude')
-    if systemctl is-active UDPserver &>/dev/null; then
-      systemctl stop UDPserver &>/dev/null
-      systemctl disable UDPserver &>/dev/null
-      iniciar=1
-    fi
-    if [[ -z $exclude ]]; then
-      Port=" -exclude=$(echo "$Port"|sed "s/ /,/g"|sed 's/,//')"
-      sed -i "s/ -mode/$Port -mode/" /etc/systemd/system/UDPserver.service
-    else
-      exclude_port=$(echo $exclude|awk '{print $4}'|cut -d '=' -f2)
-      Port="-exclude=$exclude_port$(echo "$Port"|sed "s/ /,/g")"
-      sed -i "s/-exclude=$exclude_port/$Port/" /etc/systemd/system/UDPserver.service
-    fi
-    if [[ $iniciar = 1 ]]; then
-      systemctl start UDPserver &>/dev/null
-      systemctl enable UDPserver &>/dev/null
-    fi
-  fi
-  enter
-}
-
-quit_exclude(){
-  title "${a88:-QUITAR PUERTO DE EXCLUCION}"
-  exclude=$(cat /etc/systemd/system/UDPserver.service|grep 'exclude'|awk '{print $4}')
-  ports=($port)
-  for (( i = 0; i < ${#ports[@]}; i++ )); do
-    a=$(($i+1))
-    echo "             $(msg -verd "[$a]") $(msg -verm2 '>') $(msg -azu "${ports[$i]}")"
-  done
-  if [[ ! ${#ports[@]} = 1 ]]; then
-    let a++
-    msg -bar
-    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41m${a89:-VOLVER}")  $(msg -verd "[$a]") $(msg -verm2 "> ${a90:-QUITAR TODOS}")"
-    msg -bar
-  else
-    msg -bar
-    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41m${a89:-VOLVER}")"
-    msg -bar
-  fi
-  opcion=$(selection_fun $a)
-  [[ $opcion = 0 ]] && return
-  if systemctl is-active UDPserver &>/dev/null; then
-    systemctl stop UDPserver &>/dev/null
-    systemctl disable UDPserver &>/dev/null
-    iniciar=1
-  fi
-  if [[ $opcion = $a ]]; then
-    sed -i "s/$exclude //" /etc/systemd/system/UDPserver.service
-    print_center -ama "${a91:-Se quito todos los puertos excluidos}"
-  else
-    let opcion--
-    unset Port
-    for (( i = 0; i < ${#ports[@]}; i++ )); do
-      [[ $i = $opcion ]] && continue
-      echo "$(msg -ama " ${a27:-Puerto a excluir} >") $(msg -azu "${ports[$i]}") $(msg -verd "OK")"
-      Port+=" ${ports[$i]}"
-    done
-    Port=$(echo $Port|sed 's/ /,/g')
-    sed -i "s/$exclude/-exclude=$Port/" /etc/systemd/system/UDPserver.service
-  fi
-  if [[ $iniciar = 1 ]]; then
-    systemctl start UDPserver &>/dev/null
-    systemctl enable UDPserver &>/dev/null
-  fi
-  enter
-}
-
-menu_udp(){
-	title "${a1:-SCRIPT DE CONFIGRACION UDPserver} BY @THEFATHER12"
-	print_center -ama 'UDPserver Binario by team newtoolsworks'
-	print_center -ama 'UDPcliente Para Android SocksIP'
-	msg -bar
-  
-	if [[ $(type -p udpServer) ]]; then
-    port=$(cat /etc/systemd/system/UDPserver.service|grep 'exclude')
-    if [[ ! $port = "" ]]; then
-      port=$(echo $port|awk '{print $4}'|cut -d '=' -f2|sed 's/,/ /g')
-      print_center -ama "${a2:-PUERTOS EXCLUIDOS} $port"
-      msg -bar
-    fi
-    ram=$(printf '%-8s' "$(free -m | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')")
-    cpu=$(printf '%-1s' "$(top -bn1 | awk '/Cpu/ { cpu = "" 100 - $8 "%" }; END { print cpu }')")
-    echo " $(msg -verd 'IP:') $(msg -azu "$ip_publica")  $(msg -verd 'Ram:') $(msg -azu "$ram") $(msg -verd 'CPU:') $(msg -azu "$cpu")"
-    msg -bar
-
-		if [[ $(systemctl is-active UDPserver) = 'active' ]]; then
-			estado="\e[1m\e[32m[ON]"
-		else
-			estado="\e[1m\e[31m[OFF]"
-		fi
-		echo " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -verm2 "${a3:-DESINSTALAR UDPserver}")"
-		echo -e " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -azu "${a4:-INICIAR/DETENER UDPserver}") $estado"
-    echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -azu "${a5:-REOMOVER SCRIPT}")"
-		msg -bar3
-    echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -azu "IDIOMA/LANGUAGE")"
-    msg -bar3
-		echo " $(msg -verd "[5]") $(msg -verm2 '>') $(msg -verd "${a6:-CREAR CLIENTE}")"
-		echo " $(msg -verd "[6]") $(msg -verm2 '>') $(msg -verm2 "${a7:-REMOVER CLIENTE}")"
-		echo " $(msg -verd "[7]") $(msg -verm2 '>') $(msg -ama "${a8:-RENOVAR CLIENTE}")"
-		echo " $(msg -verd "[8]") $(msg -verm2 '>') $(msg -azu "${a9:-BLOQUEAR/DESBLOQUEAR CLIENTE}")"
-		echo " $(msg -verd "[9]") $(msg -verm2 '>') $(msg -blu "${a10:-DETELLES DE LOS CLIENTES}")"
-		echo " $(msg -verd "[10]") $(msg -verm2 '>') $(msg -azu "${a11:-LIMITADO DE CUENTAS}")"
-		msg -bar3
-    print_center -ama "${a12:-EXCLUCION DE PUERTO}"
-    msg -bar3
-    echo " $(msg -verd "[11]") $(msg -verm2 '>') $(msg -verd "${a13:-AGREGAR PUERTO A LISTA DE EXCLUSION}")"
-		num=11
-    if [[ ! $port = "" ]]; then
-      echo " $(msg -verd "[12]") $(msg -verm2 '>') $(msg -verm2 "${a14:-QUITAR PUERTO A LISTA DE EXCLUSION}")"
-      num=12
-    fi
-    a=x; b=1
-	else
-		echo " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -verd "${a15:-INSTALAR UDPserver}")"
-		num=1; a=1; b=x
-	fi
-	back
-	opcion=$(selection_fun $num)
-
-	case $opcion in
-		$a)install_UDP;;
-		$b)uninstall_UDP;;
-		2)reset;;
-    3)QUIC_SCRIPT;;
-    4)idioam_lang; exit;;
-		5)new_user;;
-		6)remove_user;;
-		7)renew_user;;
-		8)block_user;;
-		9)detail_user;;
-		10)limiter;;
-    11)add_exclude;;
-    12)quit_exclude;;
-		0)return 1;;
-	esac
-}
-
-while [[  $? -eq 0 ]]; do
-  menu_udp
-done
-
+#!/usr/bin/env bash
+#
+# Obfuscate by @CesarHackGray
+# Contacta https://t.me/CesarGray
+# Channel: https://www.youtube.com/channel/UCjs0N8PbEo-se0r_4O_svNQ
+#
+#
+CesarHackGray=$(mktemp)
+base64 -d  >${CesarHackGray}<<DIXIE
+IyEvYmluL2Jhc2gKCnVkcF9maWxlPScvZXRjL1VEUHNlcnZlcicKbGFuZ19kaXI9IiR1ZHBfZmls
+ZS9sYW5nIgpsYW5nPSIkbGFuZ19kaXIvbGFuZyIKCmlkaW9hbV9sYW5nKCl7CiAgc291cmNlIDwo
+Y3VybCAtc1NsICdodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vdGhlZmF0aGVyMTIv
+U29ja3NJUC11ZHBTZXJ2ZXIvbWFpbi9sYW5nL2xhbmcnKQogIHRpdGxlIC1hbWEgJ0lESU9NQS9M
+QU5HVUFHRScKICBlY2hvICIgJChtc2cgLXZlcmQgIlswXSIpICQobXNnIC12ZXJtMiAnPicpICQo
+bXNnIC1henUgIkVzcGHDsW9sIERlZmF1bHQiKSIKICBuPTAKICBmb3IgKCggaSA9IDA7IGkgPCAk
+eyNsaXN0X2xhbmdbQF19OyBpKysgKSk7IGRvCiAgICBsZXQgbisrCiAgICBjYXNlICR7bGlzdF9s
+YW5nWyRpXX0gaW4KICAgICAgZW5fVVMpbD0nRW5nbGlzaCc7OwogICAgZXNhYwogICAgZWNobyAi
+ICQobXNnIC12ZXJkICJbJG5dIikgJChtc2cgLXZlcm0yICc+JykgJChtc2cgLWF6dSAiJGwiKSIK
+ICBkb25lCiAgbXNnIC1iYXIKICBsZz0kKHNlbGVjdGlvbl9mdW4gJG4pCiAgW1sgJGxnID0gMCBd
+XSAmJiBlY2hvICcnID4gJGxhbmcgJiYgcmV0dXJuIDEKICBsZXQgbGctLSAKICBbWyAhIC1kICRs
+YW5nX2Rpci8ke2xpc3RfbGFuZ1skbGddfSBdXSAmJiBta2RpciAtcCAkbGFuZ19kaXIvJHtsaXN0
+X2xhbmdbJGxnXX0gfHwgcm0gLXJmICRsYW5nX2Rpci8ke2xpc3RfbGFuZ1skbGddfS8qCiAgZm9y
+IGFyY2ggaW4gJGxpc3RhcnE7IGRvCiAgICBpZiAhIHdnZXQgLU8gJGxhbmdfZGlyLyR7bGlzdF9s
+YW5nWyRsZ119LyRhcmNoICJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vdGhlZmF0
+aGVyMTIvU29ja3NJUC11ZHBTZXJ2ZXIvbWFpbi9sYW5nLyR7bGlzdF9sYW5nWyRsZ119LyRhcmNo
+IiAmPi9kZXYvbnVsbCA7dGhlbgogICAgICBybSAtcmYgJGxhbmdfZGlyLyR7bGlzdF9sYW5nWyRs
+Z119CiAgICAgIGVjaG8gJycgPiAkbGFuZyA7IGV4aXQKICAgIGZpCiAgZG9uZQogIGVjaG8gIiR7
+bGlzdF9sYW5nWyRsZ119IiA+ICRsYW5nCn0KCnJlcG9faW5zdGFsbCgpewogIGxpbms9Imh0dHBz
+Oi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9ydWRpOTk5OS9BRE1SdWZ1L21haW4vUmVwb3Np
+dG9yaW9zLyRWRVJTSU9OX0lELmxpc3QiCiAgY2FzZSAkVkVSU0lPTl9JRCBpbgogICAgOCp8OSp8
+MTAqfDExKnwxNi4wNCp8MTguMDQqfDIwLjA0KnwyMC4xMCp8MjEuMDQqfDIxLjEwKnwyMi4wNCop
+IFtbICEgLWUgL2V0Yy9hcHQvc291cmNlcy5saXN0LmJhY2sgXV0gJiYgY3AgL2V0Yy9hcHQvc291
+cmNlcy5saXN0IC9ldGMvYXB0L3NvdXJjZXMubGlzdC5iYWNrCiAgICAgICAgICAgICAgICAgICAg
+ICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgd2dldCAtTyAv
+ZXRjL2FwdC9zb3VyY2VzLmxpc3QgJHtsaW5rfSAmPi9kZXYvbnVsbDs7CiAgZXNhYwp9Cgp0aW1l
+X3JlYm9vdCgpewogIHByaW50X2NlbnRlciAtYW1hICIke2E5MjotUkVJTklDSUFORE8gVlBTIEVO
+fSAkMSAke2E5MzotU0VHVU5ET1N9IgogIFJFQk9PVF9USU1FT1VUPSIkMSIKICAKICB3aGlsZSBb
+ICRSRUJPT1RfVElNRU9VVCAtZ3QgMCBdOyBkbwogICAgIHByaW50X2NlbnRlciAtbmUgIi0kUkVC
+T09UX1RJTUVPVVQtXHIiCiAgICAgc2xlZXAgMQogICAgIDogJCgoUkVCT09UX1RJTUVPVVQtLSkp
+CiAgZG9uZQogIHJlYm9vdAp9CgpjaGVja19zaXN0ZW0oKXsKICBmYWlsKCl7CiAgICBjbGVhcgog
+ICAgZWNobyAtZSAiXGVbMW1cZVszMW09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09
+PT09PT09PT09PT09PT09PT09PVxlWzBtIgogICAgZWNobyAtZSAiXGVbMW1cZVszM20ke2E5NDot
+ZXN0ZSBzY3JpcHQgbm8gZXMgY29tcGF0aWJsZSBjb24gdHUgc3lzdGVtYSBvcGVyYXRpdm99XGVb
+MG0iCiAgICBlY2hvIC1lICJcZVsxbVxlWzMzbSAgICAgICAgICAgICAgJHthOTU6LVVzYSBVYnVu
+dHUgMjAgbyBzdXBlcmlvcn1cZVswbSIKICAgIGVjaG8gLWUgIlxlWzFtXGVbMzFtPT09PT09PT09
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT1cZVswbSIKICAgIGV4
+aXQKICB9CiAgVkVSPSQoZWNobyAkVkVSU0lPTl9JRHxhd2sgLUYgJy4nICd7cHJpbnQgJDF9JykK
+ICBpZiBbWyAhICROQU1FID0gJ1VidW50dScgXV07IHRoZW4KICAgIGZhaWwKICBlbGlmIFtbICRW
+RVIgLWx0IDIwIF1dOyB0aGVuCiAgICBybSAtcmYgJHVkcF9maWxlCiAgICAgIGZhaWwKICBmaQp9
+CgppZiBbWyAhIC1lICR1ZHBfZmlsZS9VRFBzZXJ2ZXIuc2ggXV07IHRoZW4KICBta2RpciAkdWRw
+X2ZpbGUKICBjaG1vZCAtUiAreCAkdWRwX2ZpbGUKICBzb3VyY2UgPChjdXJsIC1zU0wgJ2h0dHBz
+Oi8vcmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbS9ydWRpOTk5OS9IZXJyYW1pZW50YXMvbWFpbi9t
+b2R1bGUvbW9kdWxlJykKICBpZGlvYW1fbGFuZwogIFtbIC1lICRsYW5nIF1dICYmIG5ld2xhbmc9
+JChjYXQgJGxhbmcpICYmIFtbICEgJG5ld2xhbmcgPSAnJyBdXSAmJiBzb3VyY2UgJHVkcF9maWxl
+L2xhbmcvJG5ld2xhbmcvVURQc2VydmVyCiAgc291cmNlIC9ldGMvb3MtcmVsZWFzZQogIGNoZWNr
+X3Npc3RlbQoJd2dldCAtTyAkdWRwX2ZpbGUvbW9kdWxlICdodHRwczovL3Jhdy5naXRodWJ1c2Vy
+Y29udGVudC5jb20vcnVkaTk5OTkvSGVycmFtaWVudGFzL21haW4vbW9kdWxlL21vZHVsZScgJj4v
+ZGV2L251bGwKCWNobW9kICt4ICR1ZHBfZmlsZS9tb2R1bGUKCSNzb3VyY2UgJHVkcF9maWxlL21v
+ZHVsZQoJd2dldCAtTyAkdWRwX2ZpbGUvbGltaXRhZG9yLnNoICJodHRwczovL3Jhdy5naXRodWJ1
+c2VyY29udGVudC5jb20vdGhlZmF0aGVyMTIvU29ja3NJUC11ZHBTZXJ2ZXIvbWFpbi9saW1pdGFk
+b3Iuc2giICY+L2Rldi9udWxsCgljaG1vZCAreCAkdWRwX2ZpbGUvbGltaXRhZG9yLnNoCgllY2hv
+ICcvZXRjL1VEUHNlcnZlci9VRFBzZXJ2ZXIuc2gnID4gL3Vzci9iaW4vdWRwCgljaG1vZCAreCAv
+dXNyL2Jpbi91ZHAKCXJlcG9faW5zdGFsbAoJYXB0IHVwZGF0ZSAteSAmJiBhcHQgdXBncmFkZSAt
+eQoJdWZ3IGRpc2FibGUKCWFwdCByZW1vdmUgbmV0ZmlsdGVyLXBlcnNpc3RlbnQgLXkKCWNwICQo
+cHdkKS8kMCAkdWRwX2ZpbGUvVURQc2VydmVyLnNoCgljaG1vZCAreCAkdWRwX2ZpbGUvVURQc2Vy
+dmVyLnNoCglybSAkKHB3ZCkvJDAgJj4gL2Rldi9udWxsCgl0aXRsZSAiJHthMTAyOi1JTlNUQUxB
+Q0lPTiBDT01QTEVUQX0iCglwcmludF9jZW50ZXIgLWFtYSAiJHthMTAzOi1Vc2UgZWwgY29tYW5k
+b1xudWRwXG5wYXJhIGVqZWN1dGFyIGVsIG1lbnV9IgoJbXNnIC1iYXIKCXRpbWVfcmVib290IDEw
+CmZpCgpbWyAtZSAkbGFuZyBdXSAmJiBuZXdsYW5nPSQoY2F0ICRsYW5nKSAmJiBbWyAhICRuZXds
+YW5nID0gJycgXV0gJiYgc291cmNlICR1ZHBfZmlsZS9sYW5nLyRuZXdsYW5nL1VEUHNlcnZlcgoK
+c291cmNlICR1ZHBfZmlsZS9tb2R1bGUKCmlwX3B1YmxpY2E9JChncmVwIC1tIDEgLW9FICdeWzAt
+OV17MSwzfShcLlswLTldezEsM30pezN9JCcgPDw8ICIkKHdnZXQgLVQgMTAgLXQgMSAtNHFPLSAi
+aHR0cDovL2lwMS5keW51cGRhdGUubm8taXAuY29tLyIgfHwgY3VybCAtbSAxMCAtNExzICJodHRw
+Oi8vaXAxLmR5bnVwZGF0ZS5uby1pcC5jb20vIikiKQoKIz09PT09PT0gQ09ORklHVVJBQ0lPTiBD
+VUVOVEFTIFNTSCA9PT09PT09CgpkYXRhX3VzZXIoKXsKCWNhdF91c2Vycz0kKGNhdCAiL2V0Yy9w
+YXNzd2QifGdyZXAgJ2hvbWUnfGdyZXAgJ2ZhbHNlJ3xncmVwIC12ICdzeXNsb2cnfGdyZXAgLXYg
+Jzo6Lyd8Z3JlcCAtdiAnaHdpZFx8dG9rZW4nKQoJW1sgLXogIiQoZWNobyAiJHtjYXRfdXNlcnN9
+InxoZWFkIC0xKSIgXV0gJiYgcHJpbnRfY2VudGVyIC12ZXJtMiAiJHthOTY6LU5PIEhBWSBVU1VB
+UklPUyBTU0ggUkVHSVNUUkFET1N9IiAmJiByZXR1cm4gMQogIGRhdF91cz0kKHByaW50ZiAnJS0x
+M3MlLTE0cyUtMTBzJS00cyUtNnMlcycgIiR7YTQ4Oi1Vc3VhcmlvfSIgIiR7YTQ5Oi1Db250cmFz
+ZcOxYX0iICIke2E5NzotRmVjaGF9IiAiJHthOTg6LURpYX0iICdMaW1pdCcgJ1N0YXR1JykKCW1z
+ZyAtYXp1ICIgICRkYXRfdXMiCgltc2cgLWJhcgoKCWk9MQoKICB3aGlsZSByZWFkIGxpbmU7IGRv
+CiAgICB1PSQoZWNobyAiJGxpbmUifGF3ayAtRiAnOicgJ3twcmludCAkMX0nKQoKICAgIGZlY2hh
+PSQoY2hhZ2UgLWwgIiR1InxzZWQgLW4gJzRwJ3xhd2sgLUYgJzogJyAne3ByaW50ICQyfScpCgog
+ICAgbWVzX2RpYT0kKGVjaG8gJGZlY2hhfGF3ayAtRiAnLCcgJ3twcmludCAkMX0nfHNlZCAncy8g
+Ly9nJykKICAgIGFubz0kKGVjaG8gJGZlY2hhfGF3ayAtRiAnLCAnICd7cHJpbnRmICQyfSd8Y3V0
+IC1jIDMtKQogICAgdXM9JChwcmludGYgJyUtMTJzJyAiJHUiKQoKICAgIHBhc3M9JChlY2hvICIk
+bGluZSJ8YXdrIC1GICc6JyAne3ByaW50ICQ1fSd8Y3V0IC1kICcsJyAtZjIpCiAgICBbWyAiJHsj
+cGFzc30iIC1ndCAnMTInIF1dICYmIHBhc3M9IiR7YTk5Oi1EZXNjb25vc2lkYX0iCiAgICBwYXNz
+PSIkKHByaW50ZiAnJS0xMnMnICIkcGFzcyIpIgoKICAgIHVuc2V0IHN0YXQKICAgIGlmIFtbICQo
+cGFzc3dkIC0tc3RhdHVzICR1fGN1dCAtZCAnICcgLWYyKSA9ICJQIiBdXTsgdGhlbgogICAgICBz
+dGF0PSIkKG1zZyAtdmVyZCAiVUxLIikiCiAgICBlbHNlCiAgICAgIHN0YXQ9IiQobXNnIC12ZXJt
+MiAiTE9LIikiCiAgICBmaQoKICAgIExpbWl0PSQoZWNobyAiJGxpbmUifGF3ayAtRiAnOicgJ3tw
+cmludCAkNX0nfGN1dCAtZCAnLCcgLWYxKQogICAgW1sgIiR7I0xpbWl0fSIgPSAiMSIgXV0gJiYg
+TGltaXQ9JChwcmludGYgJyUycyUtNHMnICIkTGltaXQiKSB8fCBMaW1pdD0kKHByaW50ZiAnJS02
+cycgIiRMaW1pdCIpCgogICAgZWNobyAtbmUgIiQobXNnIC12ZXJkICIkaSIpJChtc2cgLXZlcm0y
+ICItIikkKG1zZyAtYXp1ICIke3VzfSIpICQobXNnIC1henUgIiR7cGFzc30iKSIKICAgIGlmIFtb
+ICQoZWNobyAkZmVjaGF8YXdrICd7cHJpbnQgJDJ9JykgPSAiIiBdXTsgdGhlbgogICAgICBleHA9
+IiQocHJpbnRmICclOHMlLTJzJyAnW1hdJykiCiAgICAgIGV4cCs9IiQocHJpbnRmICclLTZzJyAn
+W1hdJykiCiAgICAgIGVjaG8gIiAkKG1zZyAtdmVybTIgIiRmZWNoYSIpJChtc2cgLXZlcmQgIiRl
+eHAiKSQoZWNobyAtZSAiJHN0YXQiKSIgCiAgICBlbHNlCiAgICAgIGlmIFtbICQoZGF0ZSArJXMp
+IC1ndCAkKGRhdGUgJyslcycgLWQgIiR7ZmVjaGF9IikgXV07IHRoZW4KICAgICAgICBleHA9IiQo
+cHJpbnRmICclLTVzJyAiRXhwIikiCiAgICAgICAgZWNobyAiICQobXNnIC12ZXJtMiAiJG1lc19k
+aWEvJGFubyIpICAkKG1zZyAtdmVybTIgIiRleHAiKSQobXNnIC1hbWEgIiRMaW1pdCIpJChlY2hv
+IC1lICIkc3RhdCIpIgogICAgICBlbHNlCiAgICAgICAgRVhQVElNRT0iJCgoJCgoJChkYXRlICcr
+JXMnIC1kICIke2ZlY2hhfSIpIC0gJChkYXRlICslcykpKSAvIDg2NDAwKSkiCiAgICAgICAgW1sg
+IiR7I0VYUFRJTUV9IiA9ICIxIiBdXSAmJiBleHA9IiQocHJpbnRmICclMnMlLTNzJyAiJEVYUFRJ
+TUUiKSIgfHwgZXhwPSIkKHByaW50ZiAnJS01cycgIiRFWFBUSU1FIikiCiAgICAgICAgZWNobyAi
+ICQobXNnIC12ZXJtMiAiJG1lc19kaWEvJGFubyIpICAkKG1zZyAtdmVyZCAiJGV4cCIpJChtc2cg
+LWFtYSAiJExpbWl0IikkKGVjaG8gLWUgIiRzdGF0IikiCiAgICAgIGZpCiAgICBmaQogICAgbGV0
+IGkrKwogIGRvbmUgPDw8ICIkY2F0X3VzZXJzIgp9Cgptb3N0cmFyX3VzdWFyaW9zKCl7CiAgZm9y
+IHUgaW4gYGNhdCAvZXRjL3Bhc3N3ZHxncmVwICdob21lJ3xncmVwICdmYWxzZSd8Z3JlcCAtdiAn
+c3lzbG9nJ3xncmVwIC12ICdod2lkJ3xncmVwIC12ICd0b2tlbid8Z3JlcCAtdiAnOjovJ3xhd2sg
+LUYgJzonICd7cHJpbnQgJDF9J2A7IGRvCiAgICBlY2hvICIkdSIKICBkb25lCn0KIz09PT09PT0g
+bGltaXRhZHIgbXVsdGktbG9naW4gPT09PT0KCmxpbWl0ZXIoKXsKCglsdHIoKXsKCQljbGVhcgoJ
+CW1zZyAtYmFyCgkJZm9yIGkgaW4gYGF0cXxhd2sgJ3twcmludCAkMX0nYDsgZG8KCQkJaWYgW1sg
+ISAkKGF0IC1jICRpfGdyZXAgJ2xpbWl0YWRvci5zaCcpID0gIiIgXV07IHRoZW4KCQkJCWF0cm0g
+JGkKCQkJCXNlZCAtaSAnL2xpbWl0YWRvci5zaC9kJyAvdmFyL3Nwb29sL2Nyb24vY3JvbnRhYnMv
+cm9vdAoJCQkJcHJpbnRfY2VudGVyIC12ZXJkICIke2E2ODotbGltaXRhZG9yIGRldGVuaWRvfSIK
+CQkJCWVudGVyCgkJCQlyZXR1cm4KCQkJZmkKCQlkb25lCiAgICBwcmludF9jZW50ZXIgLWFtYSAi
+JHthNjk6LUNPTkZJR1JBUiBMSU1JVEFET1J9IgogICAgbXNnIC1iYXIKICAgIHByaW50X2NlbnRl
+ciAtYW1hICIke2E3MDotQmxvcXVlYSB1c3VhcmlvcyBjdWFuZG8gZXhlZGVufSIKICAgIHByaW50
+X2NlbnRlciAtYW1hICIke2E3MTotZWwgbnVtZXJvIG1heGltbyBjb25lY2Npb25lc30iCiAgICBt
+c2cgLWJhcgogICAgdW5zZXQgb3BjaW9uCiAgICB3aGlsZSBbWyAteiAkb3BjaW9uIF1dOyBkbwog
+ICAgICBtc2cgLW5hbWEgIiAke2E3MjotRWplY3V0YXIgbGltaXRkb3IgY2FkYX06ICIKICAgICAg
+cmVhZCBvcGNpb24KICAgICAgaWYgW1sgISAkb3BjaW9uID1+ICRudW1lcm8gXV07IHRoZW4KICAg
+ICAgICBkZWwgMQogICAgICAgIHByaW50X2NlbnRlciAtdmVybTIgIiAke2E3MzotU29sbyBzZSBh
+ZG1pdGVuIG51ZW1yb3N9IgogICAgICAgIHNsZWVwIDIKICAgICAgICBkZWwgMQogICAgICAgIHVu
+c2V0IG9wY2lvbiAmJiBjb250aW51ZQogICAgICBlbGlmIFtbICRvcGNpb24gLWxlIDAgXV07IHRo
+ZW4KICAgICAgICBkZWwgMQogICAgICAgIHByaW50X2NlbnRlciAtdmVybTIgIiR7YTc0Oi10aWVt
+cG8gbWluaW1vIDEgbWludXRvfSIKICAgICAgICBzbGVlcCAyCiAgICAgICAgZGVsIDEKICAgICAg
+ICB1bnNldCBvcGNpb24gJiYgY29udGludWUKICAgICAgZmkKICAgICAgZGVsIDEKICAgICAgZWNo
+byAtZSAiJChtc2cgLW5hbWEgIiAke2E3NTotRWplY3V0YXIgbGltaXRkb3IgY2FkYX06IikgJCht
+c2cgLXZlcmQgIiRvcGNpb24gJHthNzY6LW1pbnV0b3N9IikiCiAgICAgIGVjaG8gIiRvcGNpb24i
+ID4gJHt1ZHBfZmlsZX0vbGltaXQKICAgIGRvbmUKCiAgICBtc2cgLWJhcgogICAgcHJpbnRfY2Vu
+dGVyIC1hbWEgIiR7YTc3Oi1Mb3MgdXN1YXJpb3MgYmxvcXVlYWRvcyBwb3IgZWwgbGltaXRhZG9y
+XG5zZXJhbiBkZXNibG9xdWVhZG8gYXV0b21hdGljYW1lbnRlXG4oaW5ncmVzYSAwIHBhcmEgZGVz
+YmxvcXVlbyBtYW51YWwpfSIKICAgIG1zZyAtYmFyCgogICAgdW5zZXQgb3BjaW9uCiAgICB3aGls
+ZSBbWyAteiAkb3BjaW9uIF1dOyBkbwogICAgICBtc2cgLW5hbWEgIiAke2E3ODotRGVzYmxvcXVl
+YXIgdXN1YXJpb3MgY2FkYX06ICIKICAgICAgcmVhZCBvcGNpb24KICAgICAgaWYgW1sgISAkb3Bj
+aW9uID1+ICRudW1lcm8gXV07IHRoZW4KICAgICAgICB0cHV0IGN1dTEgJiYgdHB1dCBkbDEKICAg
+ICAgICBwcmludF9jZW50ZXIgLXZlcm0yICIgJHthNzM6LVNvbG8gc2UgYWRtaXRlbiBudWVtcm9z
+fSIKICAgICAgICBzbGVlcCAyCiAgICAgICAgdHB1dCBjdXUxICYmIHRwdXQgZGwxCiAgICAgICAg
+dW5zZXQgb3BjaW9uICYmIGNvbnRpbnVlCiAgICAgIGZpCiAgICAgIHRwdXQgY3V1MSAmJiB0cHV0
+IGRsMQogICAgICBbWyAkb3BjaW9uIC1sZSAwIF1dICYmIGVjaG8gLWUgIiQobXNnIC1uYW1hICIg
+JHthNzk6LURlc2Jsb3F1ZW99OiIpICQobXNnIC12ZXJkICIke2E4MDotbWFudWFsfSIpIiB8fCBl
+Y2hvIC1lICIkKG1zZyAtbmFtYSAiICR7YTc4Oi1EZXNibG9xdWVhciB1c3VhcmlvcyBjYWRhfToi
+KSAkKG1zZyAtdmVyZCAiJG9wY2lvbiAke2E3NjotbWludXRvc30iKSIKICAgICAgZWNobyAiJG9w
+Y2lvbiIgPiAke3VkcF9maWxlfS91bmxpbWl0CiAgICBkb25lCgkJbm9odXAgJHt1ZHBfZmlsZX0v
+bGltaXRhZG9yLnNoICY+L2Rldi9udWxsICYKICAgIG1zZyAtYmFyCgkJcHJpbnRfY2VudGVyIC12
+ZXJkICIke2E4MTotbGltaXRhZG9yIGVuIGVqZWN1Y2lvbn0iCgkJZW50ZXIJCgl9CgoJbF9leHAo
+KXsKCQljbGVhcgogICAgCW1zZyAtYmFyCiAgICAJbF9jcm9uPSQoY2F0IC92YXIvc3Bvb2wvY3Jv
+bi9jcm9udGFicy9yb290fGdyZXAgLXcgJ2xpbWl0YWRvci5zaCd8Z3JlcCAtdyAnc3NoJykKICAg
+IAlpZiBbWyAteiAiJGxfY3JvbiIgXV07IHRoZW4KICAgICAgCQllY2hvICcwIDEgKiAqICogL2V0
+Yy9VRFBzZXJ2ZXIvbGltaXRhZG9yLnNoIC0tc3NoJyA+PiAvdmFyL3Nwb29sL2Nyb24vY3JvbnRh
+YnMvcm9vdAogICAgICAJCXByaW50X2NlbnRlciAtdmVyZCAiJHthODI6LWxpbWl0YWRvciBkZSBl
+eHBpcmFkb3MgcHJvZ3JhbWFkb1xuc2UgZWplY3V0YXJhIHRvZG9zIGxvcyBkaWFzIGEgbGEgMWhz
+IGFtXG5zZWd1biBsYSBob3JhIHByb2dyYW1hZGEgZW4gZWwgc2Vydmlkb3J9IgogICAgCWVsc2UK
+ICAgICAgCQlzZWQgLWkgJy9saW1pdGFkb3Iuc2ggLS1zc2gvZCcgL3Zhci9zcG9vbC9jcm9uL2Ny
+b250YWJzL3Jvb3QKICAgICAgCQlwcmludF9jZW50ZXIgLXZlcm0yICIke2E4MzotbGltaXRhZG9y
+IGRlIGV4cGlyYWRvcyBkZXRlbmlkb30iICAgCiAgICAJZmkKICAgICAgZW50ZXIKICAgICAgcmV0
+dXJuCgl9CgoJbG9nKCl7CgkJY2xlYXIKCQltc2cgLWJhcgoJCXByaW50X2NlbnRlciAtYW1hICIk
+e2E4NDotUkVHSVNUUk8gREVMIExJTUlUQURPUn0iCgkJbXNnIC1iYXIKCQlbWyAhIC1lICR7dWRw
+X2ZpbGV9L2xpbWl0LmxvZyBdXSAmJiB0b3VjaCAke3VkcF9maWxlfS9saW1pdC5sb2cKCQlpZiBb
+WyAteiAkKGNhdCAke3VkcF9maWxlfS9saW1pdC5sb2cpIF1dOyB0aGVuCgkJCXByaW50X2NlbnRl
+ciAtYW1hICIke2E4NTotbm8gYWh5IHJlZ2lzdHJvIGRlIGxpbWl0YWRvcn0iCgkJCW1zZyAtYmFy
+CgkJCXNsZWVwIDIKCQkJcmV0dXJuCgkJZmkKCQltc2cgLXRlYWwgIiQoY2F0ICR7dWRwX2ZpbGV9
+L2xpbWl0LmxvZykiCgkJbXNnIC1iYXIKCQlwcmludF9jZW50ZXIgLWFtYSAi4pa64pa6ICR7YTg2
+Oi1QcmVzaW9uZSBlbnRlciBwYXJhIGNvbnRpbnVhciBvfSDil4Til4QiCgkJcHJpbnRfY2VudGVy
+IC1hbWEgIuKWuuKWuiAke2E4NzotMCBwYXJhIGxpbXBpYXIgcmVnaXN0cm99IOKXhOKXhCIKCQly
+ZWFkIG9wY2lvbgoJCVtbICRvcGNpb24gPSAiMCIgXV0gJiYgZWNobyAiIiA+ICR7dWRwX2ZpbGV9
+L2xpbWl0LmxvZwoJfQoKCVtbICQoY2F0IC92YXIvc3Bvb2wvY3Jvbi9jcm9udGFicy9yb290fGdy
+ZXAgLXcgJ2xpbWl0YWRvci5zaCd8Z3JlcCAtdyAnc3NoJykgXV0gJiYgbGltX2U9JChtc2cgLXZl
+cmQgIltPTl0iKSB8fCBsaW1fZT0kKG1zZyAtdmVybTIgIltPRkZdIikKCgljbGVhcgoJbXNnIC1i
+YXIKCXByaW50X2NlbnRlciAtYW1hICIke2ExMTotTElNSVRBRE9SIERFIENVRU5UQVN9IgoJbXNn
+IC1iYXIKCW1lbnVfZnVuYyAiJHthNjQ6LUxJTUlUQURPUiBNVUxUSS1MT0dJTn0iICIke2E2NTot
+TElNSVRBRE9SIEVYUElSQURPU30gJGxpbV9lIiAiJHthNjY6LUxPRyBERUwgTElNSVRBRE9SfSIK
+CWJhY2sKCW1zZyAtbmUgIiAke2E2Nzotb3BjaW9ufTogIgoJcmVhZCBvcGNpb24KCWNhc2UgJG9w
+Y2lvbiBpbgoJCTEpbHRyOzsKCQkyKWxfZXhwOzsKCQkzKWxvZzs7CgkJMClyZXR1cm47OwoJZXNh
+Ywp9CgojID09PT09PT09IGRldGFsbGVzIGRlIGNsaWVudGVzID09PT0KCmRldGFpbF91c2VyKCl7
+CgljbGVhcgoJdXN1YXJpb3NfYXRpdm9zPSgnJyAkKG1vc3RyYXJfdXN1YXJpb3MpKQoJaWYgW1sg
+LXogJHt1c3Vhcmlvc19hdGl2b3NbQF19IF1dOyB0aGVuCgkJbXNnIC1iYXIKCQlwcmludF9jZW50
+ZXIgLXZlcm0yICIke2E2MjotTmluZ3VuIHVzdWFyaW8gcmVnaXN0cmFkb30iCgkJbXNnIC1iYXIK
+CQlzbGVlcCAzCgkJcmV0dXJuCgllbHNlCgkJbXNnIC1iYXIKCQlwcmludF9jZW50ZXIgLWFtYSAi
+JHthNjM6LURFVEFMTEVTIERFTCBMT1MgVVNVQVJJT1N9IgoJCW1zZyAtYmFyCglmaQoJZGF0YV91
+c2VyCgltc2cgLWJhcgoJZW50ZXIKfQoKIz09PT09PT09IGJsb3F1ZWFyIGNsaWVudGVzID09PT09
+PQoKYmxvY2tfdXNlcigpewogIGNsZWFyCiAgdXN1YXJpb3NfYXRpdm9zPSgnJyAkKG1vc3RyYXJf
+dXN1YXJpb3MpKQogIG1zZyAtYmFyCiAgcHJpbnRfY2VudGVyIC1hbWEgIiR7YTk6LUJMT1FVRUFS
+L0RFU0JMT1FVRUFSIFVTVUFSSU9TfSIKICBtc2cgLWJhcgogIGRhdGFfdXNlcgogIGJhY2sKCiAg
+cHJpbnRfY2VudGVyIC1hbWEgIiR7YTUyOi1Fc2NyaWJhIG8gU2VsZWNjaW9uZSB1biBVc3Vhcmlv
+fSIKICBtc2cgLWJhcgogIHVuc2V0IHNlbGVjdGlvbgogIHdoaWxlIFtbICR7c2VsZWN0aW9ufSA9
+ICIiIF1dOyBkbwogICAgZWNobyAtbmUgIlwwMzNbMTszN20gJHthNTk6LVNlbGVjY2lvbmV9OiAi
+ICYmIHJlYWQgc2VsZWN0aW9uCiAgICBkZWwgMQogIGRvbmUKICBbWyAke3NlbGVjdGlvbn0gPSAi
+MCIgXV0gJiYgcmV0dXJuCiAgaWYgW1sgISAkKGVjaG8gIiR7c2VsZWN0aW9ufSIgfCBlZ3JlcCAn
+W14wLTldJykgXV07IHRoZW4KICAgIHVzdWFyaW9fZGVsPSIke3VzdWFyaW9zX2F0aXZvc1skc2Vs
+ZWN0aW9uXX0iCiAgZWxzZQogICAgdXN1YXJpb19kZWw9IiRzZWxlY3Rpb24iCiAgZmkKICBbWyAt
+eiAkdXN1YXJpb19kZWwgXV0gJiYgewogICAgbXNnIC12ZXJtICIke2E1NDotRXJyb3IsIFVzdWFy
+aW8gSW52YWxpZG99IgogICAgbXNnIC1iYXIKICAgIHJldHVybiAxCiAgfQogIFtbICEgJChlY2hv
+ICR7dXN1YXJpb3NfYXRpdm9zW0BdfXxncmVwIC13ICIkdXN1YXJpb19kZWwiKSBdXSAmJiB7CiAg
+ICBtc2cgLXZlcm0gIiR7YTU0Oi1FcnJvciwgVXN1YXJpbyBJbnZhbGlkb30iCiAgICBtc2cgLWJh
+cgogICAgcmV0dXJuIDEKICB9CgogIG1zZyAtbmFtYSAiICAgJHthNDg6LVVzdWFyaW99OiAkdXN1
+YXJpb19kZWwgPj4+PiAiCgogIGlmIFtbICQocGFzc3dkIC0tc3RhdHVzICR1c3VhcmlvX2RlbHxj
+dXQgLWQgJyAnIC1mMikgPSAiUCIgXV07IHRoZW4KICAgIHBraWxsIC11ICR1c3VhcmlvX2RlbCAm
+Pi9kZXYvbnVsbAogICAgZHJvcGxpbT1gZHJvcHBpZHN8Z3JlcCAtdyAiJHVzdWFyaW9fZGVsInxh
+d2sgJ3twcmludCAkMn0nYCAKICAgIGtpbGwgLTkgJGRyb3BsaW0gJj4vZGV2L251bGwKICAgIHVz
+ZXJtb2QgLUwgJHVzdWFyaW9fZGVsICY+L2Rldi9udWxsCiAgICBzbGVlcCAyCiAgICBtc2cgLXZl
+cm0yICIke2E2MDotQmxvcXVlYWRvfSIKICBlbHNlCiAgCXVzZXJtb2QgLVUgJHVzdWFyaW9fZGVs
+CiAgCXNsZWVwIDIKICAJbXNnIC12ZXJkICIke2E2MTotRGVzYmxvcXVlYWRvfSIKICBmaQogIG1z
+ZyAtYmFyCiAgc2xlZXAgMwp9CgojPT09PT09PT1yZW5vdmFyIGNsaWVudGUgPT09PT09PT09Cgpy
+ZW5ld191c2VyX2Z1bigpewogICNub21lIGRpYXMKICBkYXRleHA9JChkYXRlICIrJUYiIC1kICIg
+KyAkMiBkYXlzIikgJiYgdmFsaWQ9JChkYXRlICcrJUMleS0lbS0lZCcgLWQgIiArICQyIGRheXMi
+KQogIGlmIGNoYWdlIC1FICR2YWxpZCAkMSA7IHRoZW4KICAJcHJpbnRfY2VudGVyIC1hbWEgIiR7
+YTEwMDotVXN1YXJpbyBSZW5vdmFkbyBDb24gRXhpdG99IgogIGVsc2UKICAJcHJpbnRfY2VudGVy
+IC12ZXJtICIke2ExMDE6LUVycm9yLCBVc3VhcmlvIG5vIFJlbm92YWRvfSIKICBmaQp9CgpyZW5l
+d191c2VyKCl7CiAgY2xlYXIKICB1c3Vhcmlvc19hdGl2b3M9KCcnICQobW9zdHJhcl91c3Vhcmlv
+cykpCiAgbXNnIC1iYXIKICBwcmludF9jZW50ZXIgLWFtYSAiJHthODotUkVOT1ZBUiBVU1VBUklP
+U30iCiAgbXNnIC1iYXIKICBkYXRhX3VzZXIKICBiYWNrCgogIHByaW50X2NlbnRlciAtYW1hICIk
+e2E1MjotRXNjcmliYSBvIFNlbGVjY2lvbmUgdW4gVXN1YXJpb30iCiAgbXNnIC1iYXIKICB1bnNl
+dCBzZWxlY3Rpb24KICB3aGlsZSBbWyAteiAke3NlbGVjdGlvbn0gXV07IGRvCiAgICBtc2cgLW5h
+enUgIiR7YTUzOi1TZWxlY2Npb25lIFVuYSBPcGNpb259OiAiICYmIHJlYWQgc2VsZWN0aW9uCiAg
+ICBkZWwgMQogIGRvbmUKCiAgW1sgJHtzZWxlY3Rpb259ID0gIjAiIF1dICYmIHJldHVybgogIGlm
+IFtbICEgJChlY2hvICIke3NlbGVjdGlvbn0iIHwgZWdyZXAgJ1teMC05XScpIF1dOyB0aGVuCiAg
+ICB1c2VyZWRpdD0iJHt1c3Vhcmlvc19hdGl2b3NbJHNlbGVjdGlvbl19IgogIGVsc2UKICAgIHVz
+ZXJlZGl0PSIkc2VsZWN0aW9uIgogIGZpCgogIFtbIC16ICR1c2VyZWRpdCBdXSAmJiB7CiAgICBt
+c2cgLXZlcm0gIiR7YTU0Oi1FcnJvciwgVXN1YXJpbyBJbnZhbGlkb30iCiAgICBtc2cgLWJhcgog
+ICAgc2xlZXAgMwogICAgcmV0dXJuIDEKICB9CgogIFtbICEgJChlY2hvICR7dXN1YXJpb3NfYXRp
+dm9zW0BdfXxncmVwIC13ICIkdXNlcmVkaXQiKSBdXSAmJiB7CiAgICBtc2cgLXZlcm0gIiR7YTU0
+Oi1FcnJvciwgVXN1YXJpbyBJbnZhbGlkb30iCiAgICBtc2cgLWJhcgogICAgc2xlZXAgMwogICAg
+cmV0dXJuIDEKICB9CgogIHdoaWxlIHRydWU7IGRvCiAgICBtc2cgLW5lICIke2E1ODotTnVldm8g
+VGllbXBvIGRlIER1cmFjaW9uIGRlfTogJHVzZXJlZGl0IgogICAgcmVhZCAtcCAiOiAiIGRpYXN1
+c2VyCiAgICBpZiBbWyAteiAiJGRpYXN1c2VyIiBdXTsgdGhlbgogICAgICBlY2hvIC1lICdcblxu
+XG4nCiAgICAgIGVycl9mdW4gNyAmJiBjb250aW51ZQogICAgZWxpZiBbWyAiJGRpYXN1c2VyIiAh
+PSArKFswLTldKSBdXTsgdGhlbgogICAgICBlY2hvIC1lICdcblxuXG4nCiAgICAgIGVycl9mdW4g
+OCAmJiBjb250aW51ZQogICAgZWxpZiBbWyAiJGRpYXN1c2VyIiAtZ3QgIjM2MCIgXV07IHRoZW4K
+ICAgICAgZWNobyAtZSAnXG5cblxuJwogICAgICBlcnJfZnVuIDkgJiYgY29udGludWUKICAgIGZp
+CiAgICBicmVhawogIGRvbmUKICBtc2cgLWJhcgogIHJlbmV3X3VzZXJfZnVuICIke3VzZXJlZGl0
+fSIgIiR7ZGlhc3VzZXJ9IgogIG1zZyAtYmFyCiAgc2xlZXAgMwp9CgojPT09PT09PT0gcmVtb3Zl
+ciBjbGllbnRlID09PT09PT09PQoKZHJvcHBpZHMoKXsKICBwb3J0X2Ryb3BiZWFyPWBwcyBhdXh8
+Z3JlcCAnZHJvcGJlYXInfGF3ayBOUj09MXxhd2sgJ3twcmludCAkMTc7fSdgCiAgbG9nPS92YXIv
+bG9nL2F1dGgubG9nCiAgbG9naW5zdWtzZXM9J1Bhc3N3b3JkIGF1dGggc3VjY2VlZGVkJwogIHBp
+ZHM9YHBzIGF4fGdyZXAgJ2Ryb3BiZWFyJ3xncmVwICIgJHBvcnRfZHJvcGJlYXIifGF3ayAtRiAi
+ICIgJ3twcmludCAkMX0nYAogIGZvciBwaWQgaW4gJHBpZHM7IGRvCiAgICBwaWRsb2dzPWBncmVw
+ICRwaWQgJGxvZyB8Z3JlcCAiJGxvZ2luc3Vrc2VzIiB8YXdrIC1GIiAiICd7cHJpbnQgJDN9J2AK
+ICAgIGk9MAogICAgZm9yIHBpZGVuZCBpbiAkcGlkbG9nczsgZG8KICAgICAgbGV0IGk9aSsxCiAg
+ICBkb25lCiAgICBpZiBbICRwaWRlbmQgXTt0aGVuCiAgICAgICBsb2dpbj1gZ3JlcCAkcGlkICRs
+b2cgfGdyZXAgIiRwaWRlbmQiIHxncmVwICIkbG9naW5zdWtzZXMiYAogICAgICAgUElEPSRwaWQK
+ICAgICAgIHVzZXI9YGVjaG8gJGxvZ2luIHxhd2sgLUYiICIgJ3twcmludCAkMTB9JyB8IHNlZCAt
+ciAicy8nLyAvZyJgCiAgICAgICB3YWt0dT1gZWNobyAkbG9naW4gfGF3ayAtRiIgIiAne3ByaW50
+ICQyIi0iJDEsJDN9J2AKICAgICAgIHdoaWxlIFsgJHsjd2FrdHV9IC1sdCAxMyBdOyBkbwogICAg
+ICAgICAgIHdha3R1PSR3YWt0dSIgIgogICAgICAgZG9uZQogICAgICAgd2hpbGUgWyAkeyN1c2Vy
+fSAtbHQgMTYgXTsgZG8KICAgICAgICAgICB1c2VyPSR1c2VyIiAiCiAgICAgICBkb25lCiAgICAg
+ICB3aGlsZSBbICR7I1BJRH0gLWx0IDggXTsgZG8KICAgICAgICAgICBQSUQ9JFBJRCIgIgogICAg
+ICAgZG9uZQogICAgICAgZWNobyAiJHVzZXIgJFBJRCAkd2FrdHUiCiAgICBmaQoJZG9uZQp9Cgpy
+bV91c2VyKCl7CiAgcGtpbGwgLXUgJDEKICBkcm9wbGltPWBkcm9wcGlkc3xncmVwIC13ICIkMSJ8
+YXdrICd7cHJpbnQgJDJ9J2AgCiAga2lsbCAtOSAkZHJvcGxpbSAmPi9kZXYvbnVsbAogIHVzZXJk
+ZWwgLS1mb3JjZSAiJDEiICY+L2Rldi9udWxsCiAgbXNqPSQ/Cn0KCnJlbW92ZV91c2VyKCl7Cglj
+bGVhcgoJdXN1YXJpb3NfYXRpdm9zPSgnJyAkKG1vc3RyYXJfdXN1YXJpb3MpKQoJbXNnIC1iYXIK
+CXByaW50X2NlbnRlciAtYW1hICIke2E3Oi1SRU1PVkVSIFVTVUFSSU9TfSIKCW1zZyAtYmFyCglk
+YXRhX3VzZXIKCWJhY2sKCglwcmludF9jZW50ZXIgLWFtYSAiJHthNTI6LUVzY3JpYmEgbyBTZWxl
+Y2Npb25lIHVuIFVzdWFyaW99IgoJbXNnIC1iYXIKCXVuc2V0IHNlbGVjdGlvbgoJd2hpbGUgW1sg
+LXogJHtzZWxlY3Rpb259IF1dOyBkbwoJCW1zZyAtbmF6dSAiJHthNTM6LVNlbGVjY2lvbmUgVW5h
+IE9wY2lvbn06ICIgJiYgcmVhZCBzZWxlY3Rpb24KCQl0cHV0IGN1dTEgJiYgdHB1dCBkbDEKCWRv
+bmUKCVtbICR7c2VsZWN0aW9ufSA9ICIwIiBdXSAmJiByZXR1cm4KCWlmIFtbICEgJChlY2hvICIk
+e3NlbGVjdGlvbn0iIHwgZWdyZXAgJ1teMC05XScpIF1dOyB0aGVuCgkJdXN1YXJpb19kZWw9IiR7
+dXN1YXJpb3NfYXRpdm9zWyRzZWxlY3Rpb25dfSIKCWVsc2UKCQl1c3VhcmlvX2RlbD0iJHNlbGVj
+dGlvbiIKCWZpCglbWyAteiAkdXN1YXJpb19kZWwgXV0gJiYgewoJCW1zZyAtdmVybSAiJHthNTQ6
+LUVycm9yLCBVc3VhcmlvIEludmFsaWRvfSIKCQltc2cgLWJhcgoJCXJldHVybiAxCgl9CglbWyAh
+ICQoZWNobyAke3VzdWFyaW9zX2F0aXZvc1tAXX18Z3JlcCAtdyAiJHVzdWFyaW9fZGVsIikgXV0g
+JiYgewoJCW1zZyAtdmVybSAiJHthNTQ6LUVycm9yLCBVc3VhcmlvIEludmFsaWRvfSIKCQltc2cg
+LWJhcgoJCXJldHVybiAxCgl9CgoJcHJpbnRfY2VudGVyIC1hbWEgIiR7YTU1Oi1Vc3VhcmlvIFNl
+bGVjY2lvbmFkb306ICR1c3VhcmlvX2RlbCIKCXJtX3VzZXIgIiR1c3VhcmlvX2RlbCIKICBpZiBb
+WyAkbXNqID0gMCBdXSA7IHRoZW4KICAgIHByaW50X2NlbnRlciAtdmVyZCAiWyR7YTU2Oi1SZW1v
+dmlkb31dIgogIGVsc2UKICAgIHByaW50X2NlbnRlciAtdmVybSAiWyR7YTU3Oi1ObyBSZW1vdmlk
+b31dIgogIGZpCiAgZW50ZXIKfQoKIz09PT09PT09Y3JlYXIgY2xpZW50ZSA9PT09PT09PT09PT09
+CmFkZF91c2VyKCl7CiAgRmVjaGE9YGRhdGUgKyVkLSVtLSV5LSVSYAogIFtbICQoY2F0IC9ldGMv
+cGFzc3dkIHxncmVwICQxOiB8Z3JlcCAtdmkgW2Etel0kMSB8Z3JlcCAtdiBbMC05XSQxID4gL2Rl
+di9udWxsKSBdXSAmJiByZXR1cm4gMQogIHZhbGlkPSQoZGF0ZSAnKyVDJXktJW0tJWQnIC1kICIg
+KyQzIGRheXMiKQogIG9zbF92PSQob3BlbnNzbCB2ZXJzaW9ufGF3ayAne3ByaW50ICQyfScpCiAg
+b3NsX3Y9JHtvc2xfdjowOjV9CiAgaWYgW1sgJG9zbF92ID0gJzEuMS4xJyBdXTsgdGhlbgogICAg
+cGFzcz0kKG9wZW5zc2wgcGFzc3dkIC02ICQyKQogIGVsc2UKICAgIHBhc3M9JChvcGVuc3NsIHBh
+c3N3ZCAtMSAkMikKICBmaQogIHVzZXJhZGQgLU0gLXMgL2Jpbi9mYWxzZSAtZSAke3ZhbGlkfSAt
+SyBQQVNTX01BWF9EQVlTPSQzIC1wICR7cGFzc30gLWMgJDQsJDIgJDEgJj4vZGV2L251bGwKICBt
+c2o9JD8KfQoKbmV3X3VzZXIoKXsKICBjbGVhcgogIHVzdWFyaW9zX2F0aXZvcz0oJycgJChtb3N0
+cmFyX3VzdWFyaW9zKSkKICBtc2cgLWJhcgogIHByaW50X2NlbnRlciAtYW1hICIke2E2Oi1DUkVB
+UiBDTElFTlRFfSIKICBtc2cgLWJhcgogIGRhdGFfdXNlcgogIGJhY2sKCiAgd2hpbGUgdHJ1ZTsg
+ZG8KICAgIG1zZyAtbmUgIiAke2E0MTotTm9tYnJlIFVzdWFyaW99OiAiCiAgICByZWFkIG5vbWV1
+c2VyCiAgICBub21ldXNlcj0iJChlY2hvICRub21ldXNlcnxzZWQgJ3kvw6HDgcOgw4DDo8ODw6LD
+gsOpw4nDqsOKw63DjcOzw5PDtcOVw7TDlMO6w5rDscORw6fDh8KqwrovYUFhQWFBYUFlRWVFaUlv
+T29Pb091VW5OY0Nhby8nKSIKICAgIG5vbWV1c2VyPSIkKGVjaG8gJG5vbWV1c2VyfHNlZCAtZSAn
+cy9bXmEtejAtOSAtXS8vaWcnKSIKICAgIGlmIFtbIC16ICRub21ldXNlciBdXTsgdGhlbgogICAg
+ICBlcnJfZnVuIDEgJiYgY29udGludWUKICAgIGVsaWYgW1sgIiR7bm9tZXVzZXJ9IiA9ICIwIiBd
+XTsgdGhlbgogICAgICByZXR1cm4KICAgIGVsaWYgW1sgIiR7I25vbWV1c2VyfSIgLWx0ICI0IiBd
+XTsgdGhlbgogICAgICBlcnJfZnVuIDIgJiYgY29udGludWUKICAgIGVsaWYgW1sgIiR7I25vbWV1
+c2VyfSIgLWd0ICIxMiIgXV07IHRoZW4KICAgICAgZXJyX2Z1biAzICYmIGNvbnRpbnVlCiAgICBl
+bGlmIFtbICIkKGVjaG8gJHt1c3Vhcmlvc19hdGl2b3NbQF19fGdyZXAgLXcgIiRub21ldXNlciIp
+IiBdXTsgdGhlbgogICAgICBlcnJfZnVuIDE0ICYmIGNvbnRpbnVlCiAgICBmaQogICAgYnJlYWsK
+ICBkb25lCgogIHdoaWxlIHRydWU7IGRvCiAgICBtc2cgLW5lICIgJHthNDI6LUNvbnRyYXNlw7Fh
+IERlIFVzdWFyaW99IgogICAgcmVhZCAtcCAiOiAiIHNlbmhhdXNlcgogICAgc2VuaGF1c2VyPSIk
+KGVjaG8gJHNlbmhhdXNlcnxzZWQgJ3kvw6HDgcOgw4DDo8ODw6LDgsOpw4nDqsOKw63DjcOzw5PD
+tcOVw7TDlMO6w5rDscORw6fDh8KqwrovYUFhQWFBYUFlRWVFaUlvT29Pb091VW5OY0Nhby8nKSIK
+ICAgIGlmIFtbIC16ICRzZW5oYXVzZXIgXV07IHRoZW4KICAgICAgZXJyX2Z1biA0ICYmIGNvbnRp
+bnVlCiAgICBlbGlmIFtbICIkeyNzZW5oYXVzZXJ9IiAtbHQgIjQiIF1dOyB0aGVuCiAgICAgIGVy
+cl9mdW4gNSAmJiBjb250aW51ZQogICAgZWxpZiBbWyAiJHsjc2VuaGF1c2VyfSIgLWd0ICIxMiIg
+XV07IHRoZW4KICAgICAgZXJyX2Z1biA2ICYmIGNvbnRpbnVlCiAgICBmaQogICAgYnJlYWsKICBk
+b25lCgogIHdoaWxlIHRydWU7IGRvCiAgICBtc2cgLW5lICIgJHthNDM6LVRpZW1wbyBkZSBEdXJh
+Y2lvbn0iCiAgICByZWFkIC1wICI6ICIgZGlhc3VzZXIKICAgIGlmIFtbIC16ICIkZGlhc3VzZXIi
+IF1dOyB0aGVuCiAgICAgIGVycl9mdW4gNyAmJiBjb250aW51ZQogICAgZWxpZiBbWyAiJGRpYXN1
+c2VyIiAhPSArKFswLTldKSBdXTsgdGhlbgogICAgICBlcnJfZnVuIDggJiYgY29udGludWUKICAg
+IGVsaWYgW1sgIiRkaWFzdXNlciIgLWd0ICIzNjAiIF1dOyB0aGVuCiAgICAgIGVycl9mdW4gOSAm
+JiBjb250aW51ZQogICAgZmkgCiAgICBicmVhawogIGRvbmUKCiAgd2hpbGUgdHJ1ZTsgZG8KICAg
+IG1zZyAtbmUgIiAke2E0NDotTGltaXRlIGRlIENvbmV4aW9ufSIKICAgIHJlYWQgLXAgIjogIiBs
+aW1pdGV1c2VyCiAgICBpZiBbWyAteiAiJGxpbWl0ZXVzZXIiIF1dOyB0aGVuCiAgICAgIGVycl9m
+dW4gMTEgJiYgY29udGludWUKICAgIGVsaWYgW1sgIiRsaW1pdGV1c2VyIiAhPSArKFswLTldKSBd
+XTsgdGhlbgogICAgICBlcnJfZnVuIDEyICYmIGNvbnRpbnVlCiAgICBlbGlmIFtbICIkbGltaXRl
+dXNlciIgLWd0ICI5OTkiIF1dOyB0aGVuCiAgICAgIGVycl9mdW4gMTMgJiYgY29udGludWUKICAg
+IGZpCiAgICBicmVhawogIGRvbmUKCiAgYWRkX3VzZXIgIiR7bm9tZXVzZXJ9IiAiJHtzZW5oYXVz
+ZXJ9IiAiJHtkaWFzdXNlcn0iICIke2xpbWl0ZXVzZXJ9IgogIGNsZWFyCiAgbXNnIC1iYXIKICBp
+ZiBbWyAkbXNqID0gMCBdXTsgdGhlbgogICAgcHJpbnRfY2VudGVyIC12ZXJkICIke2E0NTotVXN1
+YXJpbyBDcmVhZG8gY29uIEV4aXRvfSIKICBlbHNlCiAgICBwcmludF9jZW50ZXIgLXZlcm0yICIk
+e2E0NjotRXJyb3IsIFVzdWFyaW8gbm8gY3JlYWRvfSIKICAgIGVudGVyCiAgICByZXR1cm4gMQog
+IGZpCiAgbXNnIC1iYXIKICBtc2cgLW5lICIgJHthNDc6LUlQIGRlbCBTZXJ2aWRvcn06ICIgJiYg
+bXNnIC1hbWEgIiAgICAkaXBfcHVibGljYSIKICBtc2cgLW5lICIgJHthNDg6LVVzdWFyaW99OiAi
+ICYmIG1zZyAtYW1hICIgICAgICAgICAgICAkbm9tZXVzZXIiCiAgbXNnIC1uZSAiICR7YTQ5Oi1D
+b250cmFzZcOxYX06ICIgJiYgbXNnIC1hbWEgIiAgICAgICAgICRzZW5oYXVzZXIiCiAgbXNnIC1u
+ZSAiICR7YTUwOi1EaWFzIGRlIER1cmFjaW9ufTogIiAmJiBtc2cgLWFtYSAiICAgJGRpYXN1c2Vy
+IgogIG1zZyAtbmUgIiAke2E0NDotTGltaXRlIGRlIENvbmV4aW9ufTogIiAmJiBtc2cgLWFtYSAi
+ICRsaW1pdGV1c2VyIgogIG1zZyAtbmUgIiAke2E1MTotRmVjaGEgZGUgRXhwaXJhY2lvbn06ICIg
+JiYgbXNnIC1hbWEgIiQoZGF0ZSAiKyVGIiAtZCAiICsgJGRpYXN1c2VyIGRheXMiKSIKICBlbnRl
+cgp9CgojPT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09CiM9PT09PT09IENP
+TkZJR1VSQUNJT04gVURQU0VSVkVSID09PT09PT09Cgpkb3dubG9hZF91ZHBTZXJ2ZXIoKXsKCW1z
+ZyAtbmFtYSAiICAgICAgICAke2EzMDotRGVzY2FyZ2FuZG8gYmluYXJpbyBVRFBzZXJ2ZXJ9IC4u
+Li4uIgoJaWYgd2dldCAtTyAvdXNyL2Jpbi91ZHBTZXJ2ZXIgJ2h0dHBzOi8vYml0YnVja2V0Lm9y
+Zy9pb3BteC91ZHByZXF1ZXN0c2VydmVyL2Rvd25sb2Fkcy91ZHBTZXJ2ZXInICY+L2Rldi9udWxs
+IDsgdGhlbgoJCWNobW9kICt4IC91c3IvYmluL3VkcFNlcnZlcgoJCW1zZyAtdmVyZCAnT0snCgll
+bHNlCgkJbXNnIC12ZXJtMiAnZmFpbCcKCQlybSAtcmYgL3Vzci9iaW4vdWRwU2VydmVyKgoJZmkK
+fQoKbWFrZV9zZXJ2aWNlKCl7CglpcF9uYXQ9JChpcCAtNCBhZGRyIHwgZ3JlcCBpbmV0IHwgZ3Jl
+cCAtdkUgJzEyNyhcLlswLTldezEsM30pezN9JyB8IGN1dCAtZCAnLycgLWYgMSB8IGdyZXAgLW9F
+ICdbMC05XXsxLDN9KFwuWzAtOV17MSwzfSl7M30nIHwgc2VkIC1uIDFwKQoJaW50ZXJmYXM9JChp
+cCAtNCBhZGRyIHwgZ3JlcCBpbmV0IHwgZ3JlcCAtdkUgJzEyNyhcLlswLTldezEsM30pezN9J3xn
+cmVwICIkaXBfbmF0Inxhd2sgeydwcmludCAkTkYnfSkKCWlwX3B1YmxpY2E9JChncmVwIC1tIDEg
+LW9FICdeWzAtOV17MSwzfShcLlswLTldezEsM30pezN9JCcgPDw8ICIkKHdnZXQgLVQgMTAgLXQg
+MSAtNHFPLSAiaHR0cDovL2lwMS5keW51cGRhdGUubm8taXAuY29tLyIgfHwgY3VybCAtbSAxMCAt
+NExzICJodHRwOi8vaXAxLmR5bnVwZGF0ZS5uby1pcC5jb20vIikiKQoKCSNpcF9uYXQ9JChmdW5f
+aXAgbmF0KQoJI2ludGVyZmFzPSQoaXAgLTQgYWRkciB8IGdyZXAgaW5ldCB8IGdyZXAgLXZFICcx
+MjcoXC5bMC05XXsxLDN9KXszfSd8Z3JlcCAiJGlwX25hdCJ8YXdrIHsncHJpbnQgJE5GJ30pCgkj
+aXBfcHVibGljYT0kKGZ1bl9pcCkKCmNhdCA8PEVPRiA+IC9ldGMvc3lzdGVtZC9zeXN0ZW0vVURQ
+c2VydmVyLnNlcnZpY2UKW1VuaXRdCkRlc2NyaXB0aW9uPVVEUHNlcnZlciBTZXJ2aWNlIGJ5IEBU
+SEVGQVRIRVIxMgpBZnRlcj1uZXR3b3JrLnRhcmdldAoKW1NlcnZpY2VdClR5cGU9c2ltcGxlClVz
+ZXI9cm9vdApXb3JraW5nRGlyZWN0b3J5PS9yb290CkV4ZWNTdGFydD0vdXNyL2Jpbi91ZHBTZXJ2
+ZXIgLWlwPSRpcF9wdWJsaWNhIC1uZXQ9JGludGVyZmFzJFBvcnQgLW1vZGU9c3lzdGVtClJlc3Rh
+cnQ9YWx3YXlzClJlc3RhcnRTZWM9M3MKCltJbnN0YWxsXQpXYW50ZWRCeT1tdWx0aS11c2VyLnRh
+cmdldDYKRU9GCgoJbXNnIC1uYW1hICIgICAgICAgICR7YTMxOi1FamVjdXRhbmRvIHNlcnZpY2lv
+IFVEUHNlcnZlcn0gLi4uLi4iCglzeXN0ZW1jdGwgc3RhcnQgVURQc2VydmVyICY+L2Rldi9udWxs
+CglpZiBbWyAkKHN5c3RlbWN0bCBpcy1hY3RpdmUgVURQc2VydmVyKSA9ICdhY3RpdmUnIF1dOyB0
+aGVuCgkJbXNnIC12ZXJkICdPSycKCQlzeXN0ZW1jdGwgZW5hYmxlIFVEUHNlcnZlciAmPi9kZXYv
+bnVsbAoJZWxzZQoJCW1zZyAtdmVybTIgJ2ZhaWwnCglmaQp9CgppbnN0YWxsX1VEUCgpewoJdGl0
+bGUgIiR7YTE2Oi1JTlNUQUxBQ0lPTiBVRFBzZXJ2ZXJ9IgogIGV4Y2x1ZGUKCWRvd25sb2FkX3Vk
+cFNlcnZlcgoJaWYgW1sgJCh0eXBlIC1wIHVkcFNlcnZlcikgXV07IHRoZW4KCQltYWtlX3NlcnZp
+Y2UKCQltc2cgLWJhcjMKCQlpZiBbWyAkKHN5c3RlbWN0bCBpcy1hY3RpdmUgVURQc2VydmVyKSA9
+ICdhY3RpdmUnIF1dOyB0aGVuCgkJCXByaW50X2NlbnRlciAtdmVyZCAiJHthMTc6LWluc3RhbGFj
+aW9uIGNvbXBsZXRhfSIKCQllbHNlCgkJCXByaW50X2NlbnRlciAtdmVybTIgIiR7YTE4Oi1mYWxs
+YSBhbCBlamVjdXRhciBlbCBzZXJ2aWNpb30iCgkJZmkKCWVsc2UKCQllY2hvCgkJcHJpbnRfY2Vu
+dGVyIC1hbWEgIiR7YTE5Oi1GYWxsYSBhbCBkZXNjYXJnYXIgZWwgYmluYXJpbyB1ZHBTZXJ2ZXJ9
+IgoJZmkKCWVudGVyCQp9Cgp1bmluc3RhbGxfVURQKCl7Cgl0aXRsZSAiJHthMzI6LURFU0lOVEFM
+QURPUiBVRFBzZXJ2ZXJ9IgoJcmVhZCAtcnAgIiAkKG1zZyAtYW1hICIke2EzMzotUVVJRVJFIERJ
+U0lOU1RBTEFSIFVEUHNlcnZlcj8gW1MvTl19OiIpICIgLWUgLWkgUyBVTklOUwoJW1sgJFVOSU5T
+ICE9IEAoWXx5fFN8cykgXV0gJiYgcmV0dXJuCglzeXN0ZW1jdGwgc3RvcCBVRFBzZXJ2ZXIgJj4v
+ZGV2L251bGwKCXN5c3RlbWN0bCBkaXNhYmxlIFVEUHNlcnZlciAmPi9kZXYvbnVsbAoJcm0gLXJm
+IC9ldGMvc3lzdGVtZC9zeXN0ZW0vVURQc2VydmVyLnNlcnZpY2UKCXJtIC1yZiAvdXNyL2Jpbi91
+ZHBTZXJ2ZXIKCWRlbCAxCglwcmludF9jZW50ZXIgLWFtYSAiJHthMzQ6LWRlc2luc3RhbGFjaW9u
+IGNvbXBsZXRhIX0iCgllbnRlcgp9CgpyZXNldCgpewoJaWYgW1sgJChzeXN0ZW1jdGwgaXMtYWN0
+aXZlIFVEUHNlcnZlcikgPSAnYWN0aXZlJyBdXTsgdGhlbgoJCXN5c3RlbWN0bCBzdG9wIFVEUHNl
+cnZlciAmPi9kZXYvbnVsbAoJCXN5c3RlbWN0bCBkaXNhYmxlIFVEUHNlcnZlciAmPi9kZXYvbnVs
+bAoJCXByaW50X2NlbnRlciAtYW1hICIke2EzNTotVURQc2VydmVyIGRldGVuaWRvIX0iCgllbHNl
+CgkJc3lzdGVtY3RsIHN0YXJ0IFVEUHNlcnZlciAmPi9kZXYvbnVsbAoJCWlmIFtbICQoc3lzdGVt
+Y3RsIGlzLWFjdGl2ZSBVRFBzZXJ2ZXIpID0gJ2FjdGl2ZScgXV07IHRoZW4KCQkJc3lzdGVtY3Rs
+IGVuYWJsZSBVRFBzZXJ2ZXIgJj4vZGV2L251bGwKCQkJcHJpbnRfY2VudGVyIC12ZXJkICIke2Ez
+NjotVURQc2VydmVyIGluaWNpYWRvIX0iCgkJZWxzZQoJCQlwcmludF9jZW50ZXIgLXZlcm0yICIk
+e2EzNzotZmFsbGEgYWwgaW5jaWFyIFVEUHNlcnZlciF9IgoJCWZpCQoJZmkKCWVudGVyCn0KCiM9
+PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0KClFVSUNfU0NSSVBUKCl7
+Cgl0aXRsZSAiJHthMzg6LURFU0lOU1RBTEFET1IgU0NSSVBUIFVEUHNlcnZlcn0iCglyZWFkIC1y
+cCAiICQobXNnIC1hbWEgIiR7YTM5Oi1RVUlFUkUgRElTSU5TVEFMQVIgRUwgU0NSSVBUIFVEUHNl
+cnZlcj8gW1MvTl19OiIpICIgLWUgLWkgTiBVTklOUwoJW1sgJFVOSU5TICE9IEAoWXx5fFN8cykg
+XV0gJiYgcmV0dXJuCglzeXN0ZW1jdGwgZGlzYWJsZSBVRFBzZXJ2ZXIgJj4vZGV2L251bGwKCXN5
+c3RlbWN0bCBzdG9wIFVEUHNlcnZlciAmPi9kZXYvbnVsbAoJcm0gL2V0Yy9zeXN0ZW1kL3N5c3Rl
+bS9VRFBzZXJ2ZXIuc2VydmljZQoJcm0gL3Vzci9iaW4vdWRwU2VydmVyCglybSAvdXNyL2Jpbi91
+ZHAKCXJtIC1yZiAkdWRwX2ZpbGUKCXRpdGxlICIke2E0MDotREVTSU5TVEFMQUNJT04gQ09NUExF
+VEF9IgoJdGltZV9yZWJvb3QgMTAKfQoKZXhjbHVkZSgpewogIHRpdGxlICIke2EyMDotRXhjbHVp
+ciBwdWVydG9zIFVEUH0iCiAgcHJpbnRfY2VudGVyIC1hbWEgIiR7YTIxOi1VRFBzZXJ2ZXIgY3Vi
+cmUgZWwgcmFuZ28gdG90YWwgZGUgcHVlcnRvcy59IgogIHByaW50X2NlbnRlciAtYW1hICIke2Ey
+MjotcHVlZGVzIGV4Y2x1aXIgcHVlcnRvcyBVRFB9IgogIG1zZyAtYmFyMwogIHByaW50X2NlbnRl
+ciAtYW1hICIke2EyMzotRWplbXBsb3MgZGUgcHVlcnRvcyBhIGV4Y2x1aXJ9OiIKICBwcmludF9j
+ZW50ZXIgLWFtYSAiZG5zdHQgKHNsb3dkbnMpIHVkcCA1MyA1MzAwIgogIHByaW50X2NlbnRlciAt
+YW1hICJ3aXJlZ3VhcmQgdWRwIDUxODIwIgogIHByaW50X2NlbnRlciAtYW1hICJvcGVudnBuIHVk
+cCAxMTk0IgogIG1zZyAtYmFyCiAgcHJpbnRfY2VudGVyIC12ZXJkICIke2EyNDotaW5ncmVzYSBs
+b3MgcHVlcnRvcyBzZXBhcmFkb3MgcG9yIGVzcGFjaW9zfSIKICBwcmludF9jZW50ZXIgLXZlcmQg
+IiR7YTI1Oi1FamVtcGxvfTogNTMgNTMwMCA1MTgyMCAxMTk0IgogIG1zZyAtYmFyMwogIGluX29w
+Y2lvbl9kb3duICIke2EyNjotZGlnaXRhIHB1ZXJ0b3MgbyBlbnRlciBzYWx0YXJ9IgogIGRlbCAy
+CiAgdG1wb3J0PSgkb3BjaW9uKQogIGZvciAoKCBpID0gMDsgaSA8ICR7I3RtcG9ydFtAXX07IGkr
+KyApKTsgZG8KICAgIG51bT0kKCgke3RtcG9ydFskaV19KSkKICAgIGlmIFtbICRudW0gLWd0IDAg
+XV07IHRoZW4KICAgICAgZWNobyAiJChtc2cgLWFtYSAiICR7YTI3Oi1QdWVydG8gYSBleGNsdWly
+fSA+IikgJChtc2cgLWF6dSAiJG51bSIpICQobXNnIC12ZXJkICJPSyIpIgogICAgICBQb3J0Kz0i
+ICRudW0iCiAgICBlbHNlCiAgICAgIG1zZyAtdmVybTIgIiAke2EyODotTm8gZXMgdW4gcHVlcnRv
+fSA+ICR7dG1wb3J0WyRpXX0/IgogICAgICBjb250aW51ZQogICAgZmkKICBkb25lCgogIGlmIFtb
+IC16ICRQb3J0IF1dOyB0aGVuCiAgICB1bnNldCBQb3J0CiAgICBwcmludF9jZW50ZXIgLWFtYSAi
+JHthMjk6LW5vIHNlIGV4Y2x1eWVyb24gcHVlcnRvc30iCiAgZWxzZQogICAgUG9ydD0iIC1leGNs
+dWRlPSQoZWNobyAiJFBvcnQifHNlZCAicy8gLywvZyJ8c2VkICdzLywvLycpIgogIGZpCiAgbXNn
+IC1iYXIzCn0KCmFkZF9leGNsdWRlKCl7CiAgdGl0bGUgIiR7YTIwOi1FeGNsdWlyIHB1ZXJ0b3Mg
+VURQfSIKICBwcmludF9jZW50ZXIgLWFtYSAiJHthMjE6LVVEUHNlcnZlciBjdWJyZSBlbCByYW5n
+byB0b3RhbCBkZSBwdWVydG9zLn0iCiAgcHJpbnRfY2VudGVyIC1hbWEgIiR7YTIyOi1wdWVkZXMg
+ZXhjbHVpciBwdWVydG9zIFVEUH0iCiAgbXNnIC1iYXIzCiAgcHJpbnRfY2VudGVyIC1hbWEgIiR7
+YTIzOi1FamVtcGxvcyBkZSBwdWVydG9zIGEgZXhjbHVpcn06IgogIHByaW50X2NlbnRlciAtYW1h
+ICJkbnN0dCAoc2xvd2RucykgdWRwIDUzIDUzMDAiCiAgcHJpbnRfY2VudGVyIC1hbWEgIndpcmVn
+dWFyZCB1ZHAgNTE4MjAiCiAgcHJpbnRfY2VudGVyIC1hbWEgIm9wZW52cG4gdWRwIDExOTQiCiAg
+bXNnIC1iYXIKICBwcmludF9jZW50ZXIgLXZlcmQgIiR7YTI0Oi1pbmdyZXNhIGxvcyBwdWVydG9z
+IHNlcGFyYWRvcyBwb3IgZXNwYWNpb3N9IgogIHByaW50X2NlbnRlciAtdmVyZCAiJHthMjU6LUVq
+ZW1wbG99OiA1MyA1MzAwIDUxODIwIDExOTQiCiAgaW5fb3BjaW9uX2Rvd24gIiR7YTI2Oi1kaWdp
+dGEgcHVlcnRvcyBvIGVudGVyIHNhbHRhcn0iCiAgZGVsIDQKICB0bXBvcnQ9KCRvcGNpb24pCiAg
+dW5zZXQgUG9ydAogIGZvciAoKCBpID0gMDsgaSA8ICR7I3RtcG9ydFtAXX07IGkrKyApKTsgZG8K
+ICAgIG51bT0kKCgke3RtcG9ydFskaV19KSkKICAgIGlmIFtbICRudW0gLWd0IDAgXV07IHRoZW4K
+ICAgICAgZWNobyAiJChtc2cgLWFtYSAiICR7YTI3Oi1QdWVydG8gYSBleGNsdWlyfSA+IikgJCht
+c2cgLWF6dSAiJG51bSIpICQobXNnIC12ZXJkICJPSyIpIgogICAgICBQb3J0Kz0iICRudW0iCiAg
+ICBlbHNlCiAgICAgIG1zZyAtdmVybTIgIiAke2EyODotTm8gZXMgdW4gcHVlcnRvfSA+ICR7dG1w
+b3J0WyRpXX0/IgogICAgICBjb250aW51ZQogICAgZmkKICBkb25lCiAgaWYgW1sgJFBvcnQgPSAi
+IiBdXTsgdGhlbgogICAgdW5zZXQgUG9ydAogICAgcHJpbnRfY2VudGVyIC1hbWEgIiR7YTI5Oi1u
+byBzZSBleGNsdXllcm9uIHB1ZXJ0b3N9IgogIGVsc2UKICAgIGV4Y2x1ZGU9JChjYXQgL2V0Yy9z
+eXN0ZW1kL3N5c3RlbS9VRFBzZXJ2ZXIuc2VydmljZXxncmVwICdleGNsdWRlJykKICAgIGlmIHN5
+c3RlbWN0bCBpcy1hY3RpdmUgVURQc2VydmVyICY+L2Rldi9udWxsOyB0aGVuCiAgICAgIHN5c3Rl
+bWN0bCBzdG9wIFVEUHNlcnZlciAmPi9kZXYvbnVsbAogICAgICBzeXN0ZW1jdGwgZGlzYWJsZSBV
+RFBzZXJ2ZXIgJj4vZGV2L251bGwKICAgICAgaW5pY2lhcj0xCiAgICBmaQogICAgaWYgW1sgLXog
+JGV4Y2x1ZGUgXV07IHRoZW4KICAgICAgUG9ydD0iIC1leGNsdWRlPSQoZWNobyAiJFBvcnQifHNl
+ZCAicy8gLywvZyJ8c2VkICdzLywvLycpIgogICAgICBzZWQgLWkgInMvIC1tb2RlLyRQb3J0IC1t
+b2RlLyIgL2V0Yy9zeXN0ZW1kL3N5c3RlbS9VRFBzZXJ2ZXIuc2VydmljZQogICAgZWxzZQogICAg
+ICBleGNsdWRlX3BvcnQ9JChlY2hvICRleGNsdWRlfGF3ayAne3ByaW50ICQ0fSd8Y3V0IC1kICc9
+JyAtZjIpCiAgICAgIFBvcnQ9Ii1leGNsdWRlPSRleGNsdWRlX3BvcnQkKGVjaG8gIiRQb3J0Inxz
+ZWQgInMvIC8sL2ciKSIKICAgICAgc2VkIC1pICJzLy1leGNsdWRlPSRleGNsdWRlX3BvcnQvJFBv
+cnQvIiAvZXRjL3N5c3RlbWQvc3lzdGVtL1VEUHNlcnZlci5zZXJ2aWNlCiAgICBmaQogICAgaWYg
+W1sgJGluaWNpYXIgPSAxIF1dOyB0aGVuCiAgICAgIHN5c3RlbWN0bCBzdGFydCBVRFBzZXJ2ZXIg
+Jj4vZGV2L251bGwKICAgICAgc3lzdGVtY3RsIGVuYWJsZSBVRFBzZXJ2ZXIgJj4vZGV2L251bGwK
+ICAgIGZpCiAgZmkKICBlbnRlcgp9CgpxdWl0X2V4Y2x1ZGUoKXsKICB0aXRsZSAiJHthODg6LVFV
+SVRBUiBQVUVSVE8gREUgRVhDTFVDSU9OfSIKICBleGNsdWRlPSQoY2F0IC9ldGMvc3lzdGVtZC9z
+eXN0ZW0vVURQc2VydmVyLnNlcnZpY2V8Z3JlcCAnZXhjbHVkZSd8YXdrICd7cHJpbnQgJDR9JykK
+ICBwb3J0cz0oJHBvcnQpCiAgZm9yICgoIGkgPSAwOyBpIDwgJHsjcG9ydHNbQF19OyBpKysgKSk7
+IGRvCiAgICBhPSQoKCRpKzEpKQogICAgZWNobyAiICAgICAgICAgICAgICQobXNnIC12ZXJkICJb
+JGFdIikgJChtc2cgLXZlcm0yICc+JykgJChtc2cgLWF6dSAiJHtwb3J0c1skaV19IikiCiAgZG9u
+ZQogIGlmIFtbICEgJHsjcG9ydHNbQF19ID0gMSBdXTsgdGhlbgogICAgbGV0IGErKwogICAgbXNn
+IC1iYXIKICAgIGVjaG8gIiAgICAgICAgICAgICAkKG1zZyAtdmVyZCAiWzBdIikgJChtc2cgLXZl
+cm0yICI+IikgJChtc2cgLWJyYSAiXDAzM1sxOzQxbSR7YTg5Oi1WT0xWRVJ9IikgICQobXNnIC12
+ZXJkICJbJGFdIikgJChtc2cgLXZlcm0yICI+ICR7YTkwOi1RVUlUQVIgVE9ET1N9IikiCiAgICBt
+c2cgLWJhcgogIGVsc2UKICAgIG1zZyAtYmFyCiAgICBlY2hvICIgICAgICAgICAgICAgJChtc2cg
+LXZlcmQgIlswXSIpICQobXNnIC12ZXJtMiAiPiIpICQobXNnIC1icmEgIlwwMzNbMTs0MW0ke2E4
+OTotVk9MVkVSfSIpIgogICAgbXNnIC1iYXIKICBmaQogIG9wY2lvbj0kKHNlbGVjdGlvbl9mdW4g
+JGEpCiAgW1sgJG9wY2lvbiA9IDAgXV0gJiYgcmV0dXJuCiAgaWYgc3lzdGVtY3RsIGlzLWFjdGl2
+ZSBVRFBzZXJ2ZXIgJj4vZGV2L251bGw7IHRoZW4KICAgIHN5c3RlbWN0bCBzdG9wIFVEUHNlcnZl
+ciAmPi9kZXYvbnVsbAogICAgc3lzdGVtY3RsIGRpc2FibGUgVURQc2VydmVyICY+L2Rldi9udWxs
+CiAgICBpbmljaWFyPTEKICBmaQogIGlmIFtbICRvcGNpb24gPSAkYSBdXTsgdGhlbgogICAgc2Vk
+IC1pICJzLyRleGNsdWRlIC8vIiAvZXRjL3N5c3RlbWQvc3lzdGVtL1VEUHNlcnZlci5zZXJ2aWNl
+CiAgICBwcmludF9jZW50ZXIgLWFtYSAiJHthOTE6LVNlIHF1aXRvIHRvZG9zIGxvcyBwdWVydG9z
+IGV4Y2x1aWRvc30iCiAgZWxzZQogICAgbGV0IG9wY2lvbi0tCiAgICB1bnNldCBQb3J0CiAgICBm
+b3IgKCggaSA9IDA7IGkgPCAkeyNwb3J0c1tAXX07IGkrKyApKTsgZG8KICAgICAgW1sgJGkgPSAk
+b3BjaW9uIF1dICYmIGNvbnRpbnVlCiAgICAgIGVjaG8gIiQobXNnIC1hbWEgIiAke2EyNzotUHVl
+cnRvIGEgZXhjbHVpcn0gPiIpICQobXNnIC1henUgIiR7cG9ydHNbJGldfSIpICQobXNnIC12ZXJk
+ICJPSyIpIgogICAgICBQb3J0Kz0iICR7cG9ydHNbJGldfSIKICAgIGRvbmUKICAgIFBvcnQ9JChl
+Y2hvICRQb3J0fHNlZCAncy8gLywvZycpCiAgICBzZWQgLWkgInMvJGV4Y2x1ZGUvLWV4Y2x1ZGU9
+JFBvcnQvIiAvZXRjL3N5c3RlbWQvc3lzdGVtL1VEUHNlcnZlci5zZXJ2aWNlCiAgZmkKICBpZiBb
+WyAkaW5pY2lhciA9IDEgXV07IHRoZW4KICAgIHN5c3RlbWN0bCBzdGFydCBVRFBzZXJ2ZXIgJj4v
+ZGV2L251bGwKICAgIHN5c3RlbWN0bCBlbmFibGUgVURQc2VydmVyICY+L2Rldi9udWxsCiAgZmkK
+ICBlbnRlcgp9CgptZW51X3VkcCgpewoJdGl0bGUgIiR7YTE6LVNDUklQVCBERSBDT05GSUdSQUNJ
+T04gVURQc2VydmVyfSBCWSBAVEhFRkFUSEVSMTIiCglwcmludF9jZW50ZXIgLWFtYSAnVURQc2Vy
+dmVyIEJpbmFyaW8gYnkgdGVhbSBuZXd0b29sc3dvcmtzJwoJcHJpbnRfY2VudGVyIC1hbWEgJ1VE
+UGNsaWVudGUgUGFyYSBBbmRyb2lkIFNvY2tzSVAnCgltc2cgLWJhcgogIAoJaWYgW1sgJCh0eXBl
+IC1wIHVkcFNlcnZlcikgXV07IHRoZW4KICAgIHBvcnQ9JChjYXQgL2V0Yy9zeXN0ZW1kL3N5c3Rl
+bS9VRFBzZXJ2ZXIuc2VydmljZXxncmVwICdleGNsdWRlJykKICAgIGlmIFtbICEgJHBvcnQgPSAi
+IiBdXTsgdGhlbgogICAgICBwb3J0PSQoZWNobyAkcG9ydHxhd2sgJ3twcmludCAkNH0nfGN1dCAt
+ZCAnPScgLWYyfHNlZCAncy8sLyAvZycpCiAgICAgIHByaW50X2NlbnRlciAtYW1hICIke2EyOi1Q
+VUVSVE9TIEVYQ0xVSURPU30gJHBvcnQiCiAgICAgIG1zZyAtYmFyCiAgICBmaQogICAgcmFtPSQo
+cHJpbnRmICclLThzJyAiJChmcmVlIC1tIHwgYXdrICdOUj09MntwcmludGYgIiUuMmYlJSIsICQz
+KjEwMC8kMiB9JykiKQogICAgY3B1PSQocHJpbnRmICclLTFzJyAiJCh0b3AgLWJuMSB8IGF3ayAn
+L0NwdS8geyBjcHUgPSAiIiAxMDAgLSAkOCAiJSIgfTsgRU5EIHsgcHJpbnQgY3B1IH0nKSIpCiAg
+ICBlY2hvICIgJChtc2cgLXZlcmQgJ0lQOicpICQobXNnIC1henUgIiRpcF9wdWJsaWNhIikgICQo
+bXNnIC12ZXJkICdSYW06JykgJChtc2cgLWF6dSAiJHJhbSIpICQobXNnIC12ZXJkICdDUFU6Jykg
+JChtc2cgLWF6dSAiJGNwdSIpIgogICAgbXNnIC1iYXIKCgkJaWYgW1sgJChzeXN0ZW1jdGwgaXMt
+YWN0aXZlIFVEUHNlcnZlcikgPSAnYWN0aXZlJyBdXTsgdGhlbgoJCQllc3RhZG89IlxlWzFtXGVb
+MzJtW09OXSIKCQllbHNlCgkJCWVzdGFkbz0iXGVbMW1cZVszMW1bT0ZGXSIKCQlmaQoJCWVjaG8g
+IiAkKG1zZyAtdmVyZCAiWzFdIikgJChtc2cgLXZlcm0yICc+JykgJChtc2cgLXZlcm0yICIke2Ez
+Oi1ERVNJTlNUQUxBUiBVRFBzZXJ2ZXJ9IikiCgkJZWNobyAtZSAiICQobXNnIC12ZXJkICJbMl0i
+KSAkKG1zZyAtdmVybTIgJz4nKSAkKG1zZyAtYXp1ICIke2E0Oi1JTklDSUFSL0RFVEVORVIgVURQ
+c2VydmVyfSIpICRlc3RhZG8iCiAgICBlY2hvICIgJChtc2cgLXZlcmQgIlszXSIpICQobXNnIC12
+ZXJtMiAnPicpICQobXNnIC1henUgIiR7YTU6LVJFT01PVkVSIFNDUklQVH0iKSIKCQltc2cgLWJh
+cjMKICAgIGVjaG8gIiAkKG1zZyAtdmVyZCAiWzRdIikgJChtc2cgLXZlcm0yICc+JykgJChtc2cg
+LWF6dSAiSURJT01BL0xBTkdVQUdFIikiCiAgICBtc2cgLWJhcjMKCQllY2hvICIgJChtc2cgLXZl
+cmQgIls1XSIpICQobXNnIC12ZXJtMiAnPicpICQobXNnIC12ZXJkICIke2E2Oi1DUkVBUiBDTElF
+TlRFfSIpIgoJCWVjaG8gIiAkKG1zZyAtdmVyZCAiWzZdIikgJChtc2cgLXZlcm0yICc+JykgJCht
+c2cgLXZlcm0yICIke2E3Oi1SRU1PVkVSIENMSUVOVEV9IikiCgkJZWNobyAiICQobXNnIC12ZXJk
+ICJbN10iKSAkKG1zZyAtdmVybTIgJz4nKSAkKG1zZyAtYW1hICIke2E4Oi1SRU5PVkFSIENMSUVO
+VEV9IikiCgkJZWNobyAiICQobXNnIC12ZXJkICJbOF0iKSAkKG1zZyAtdmVybTIgJz4nKSAkKG1z
+ZyAtYXp1ICIke2E5Oi1CTE9RVUVBUi9ERVNCTE9RVUVBUiBDTElFTlRFfSIpIgoJCWVjaG8gIiAk
+KG1zZyAtdmVyZCAiWzldIikgJChtc2cgLXZlcm0yICc+JykgJChtc2cgLWJsdSAiJHthMTA6LURF
+VEVMTEVTIERFIExPUyBDTElFTlRFU30iKSIKCQllY2hvICIgJChtc2cgLXZlcmQgIlsxMF0iKSAk
+KG1zZyAtdmVybTIgJz4nKSAkKG1zZyAtYXp1ICIke2ExMTotTElNSVRBRE8gREUgQ1VFTlRBU30i
+KSIKCQltc2cgLWJhcjMKICAgIHByaW50X2NlbnRlciAtYW1hICIke2ExMjotRVhDTFVDSU9OIERF
+IFBVRVJUT30iCiAgICBtc2cgLWJhcjMKICAgIGVjaG8gIiAkKG1zZyAtdmVyZCAiWzExXSIpICQo
+bXNnIC12ZXJtMiAnPicpICQobXNnIC12ZXJkICIke2ExMzotQUdSRUdBUiBQVUVSVE8gQSBMSVNU
+QSBERSBFWENMVVNJT059IikiCgkJbnVtPTExCiAgICBpZiBbWyAhICRwb3J0ID0gIiIgXV07IHRo
+ZW4KICAgICAgZWNobyAiICQobXNnIC12ZXJkICJbMTJdIikgJChtc2cgLXZlcm0yICc+JykgJCht
+c2cgLXZlcm0yICIke2ExNDotUVVJVEFSIFBVRVJUTyBBIExJU1RBIERFIEVYQ0xVU0lPTn0iKSIK
+ICAgICAgbnVtPTEyCiAgICBmaQogICAgYT14OyBiPTEKCWVsc2UKCQllY2hvICIgJChtc2cgLXZl
+cmQgIlsxXSIpICQobXNnIC12ZXJtMiAnPicpICQobXNnIC12ZXJkICIke2ExNTotSU5TVEFMQVIg
+VURQc2VydmVyfSIpIgoJCW51bT0xOyBhPTE7IGI9eAoJZmkKCWJhY2sKCW9wY2lvbj0kKHNlbGVj
+dGlvbl9mdW4gJG51bSkKCgljYXNlICRvcGNpb24gaW4KCQkkYSlpbnN0YWxsX1VEUDs7CgkJJGIp
+dW5pbnN0YWxsX1VEUDs7CgkJMilyZXNldDs7CiAgICAzKVFVSUNfU0NSSVBUOzsKICAgIDQpaWRp
+b2FtX2xhbmc7IGV4aXQ7OwoJCTUpbmV3X3VzZXI7OwoJCTYpcmVtb3ZlX3VzZXI7OwoJCTcpcmVu
+ZXdfdXNlcjs7CgkJOClibG9ja191c2VyOzsKCQk5KWRldGFpbF91c2VyOzsKCQkxMClsaW1pdGVy
+OzsKICAgIDExKWFkZF9leGNsdWRlOzsKICAgIDEyKXF1aXRfZXhjbHVkZTs7CgkJMClyZXR1cm4g
+MTs7Cgllc2FjCn0KCndoaWxlIFtbICAkPyAtZXEgMCBdXTsgZG8KICBtZW51X3VkcApkb25lCgo=
+DIXIE
+source ${CesarHackGray}
+rm -rf ${CesarHackGray}
